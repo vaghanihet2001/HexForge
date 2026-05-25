@@ -60,9 +60,19 @@ def profile_model_route():
         })
     except Exception as e:
         import traceback
+        err_msg = str(e)
+        error_node_id = None
+        if "Node execution failed at node_id: " in err_msg:
+            try:
+                parts = err_msg.split("Node execution failed at node_id: ")
+                error_node_id = parts[1].split(".")[0].strip()
+            except Exception:
+                pass
+                
         return jsonify({
             "status": "error",
-            "message": str(e),
+            "message": err_msg,
+            "error_node_id": error_node_id,
             "traceback": traceback.format_exc()
         }), 400
 

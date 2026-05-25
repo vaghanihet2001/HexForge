@@ -311,13 +311,7 @@ document.getElementById('node-search').addEventListener('input',function(){
   });
 });
 
-// Clear canvas
-document.getElementById('btn-clear').addEventListener('click',()=>{
-  if(window.AppGraph&&confirm('Clear the canvas?')){
-    window.AppGraph.clear();
-    if(LiteGraph.LGraphCanvas.active_canvas)LiteGraph.LGraphCanvas.active_canvas.setDirty(true,true);
-  }
-});
+
 
 // Layout arrangement direction toggle
 function arrangeGraph(direction) {
@@ -439,8 +433,134 @@ function arrangeGraph(direction) {
   }
 }
 
-document.getElementById('btn-layout-horizontal').addEventListener('click', () => arrangeGraph('horizontal'));
-document.getElementById('btn-layout-vertical').addEventListener('click', () => arrangeGraph('vertical'));
+// Dropdown menu interactive behavior
+function closeAllDropdowns() {
+  document.querySelectorAll('.tb-dropdown-wrap').forEach(wrap => {
+    wrap.classList.remove('open');
+  });
+}
+window.CloseAllDropdowns = closeAllDropdowns; // expose to window for api.js
+
+document.querySelectorAll('.tb-dropdown-wrap').forEach(wrap => {
+  const btn = wrap.querySelector('.tb-menu-btn');
+  if (btn) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.tb-dropdown-wrap').forEach(other => {
+        if (other !== wrap) {
+          other.classList.remove('open');
+        }
+      });
+      wrap.classList.toggle('open');
+    });
+  }
+});
+
+// Close all dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.tb-dropdown-wrap')) {
+    closeAllDropdowns();
+  }
+});
+
+// Close dropdown when a non-label option is clicked
+document.querySelectorAll('.tb-drop-item:not(label)').forEach(item => {
+  item.addEventListener('click', () => {
+    closeAllDropdowns();
+  });
+});
+
+// New Canvas
+document.getElementById('btn-new-canvas').addEventListener('click', () => {
+  if (window.AppGraph) {
+    window.customConfirm('Create a new canvas? This will clear the current workspace.', () => {
+      window.AppGraph.clear();
+      const inputNode = LiteGraph.createNode("pytorch/input");
+      if (inputNode) {
+        inputNode.pos = [100, 200];
+        window.AppGraph.add(inputNode);
+      }
+      if (LiteGraph.LGraphCanvas.active_canvas) {
+        LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+      }
+      if (window.TriggerAutosave) window.TriggerAutosave(true);
+    }, null, 'New Workspace');
+  }
+});
+
+// Save as JSON
+document.getElementById('btn-save-json').addEventListener('click', () => {
+  if (!window.AppGraph) return;
+  const data = JSON.stringify(window.AppGraph.serialize(), null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'hexforge_graph.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+// Load JSON
+const jsonFileInput = document.getElementById('json-file-input');
+document.getElementById('btn-load-json').addEventListener('click', () => {
+  jsonFileInput.click();
+});
+jsonFileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const data = JSON.parse(event.target.result);
+      if (window.AppGraph) {
+        window.AppGraph.clear();
+        window.AppGraph.configure(data);
+        if (window.GetBaseTitle && window.AppGraph._nodes) {
+          window.AppGraph._nodes.forEach(n => {
+            n.title = window.GetBaseTitle(n);
+            n.originalTitle = n.title;
+          });
+        }
+        if (window.SyncAllNodeWidgets) {
+          window.SyncAllNodeWidgets(window.AppGraph);
+        }
+        if (LiteGraph.LGraphCanvas.active_canvas) {
+          LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+        }
+        window.customAlert("Graph loaded successfully!", "success", "Success");
+        if (window.TriggerAutosave) window.TriggerAutosave(true);
+      }
+    } catch (err) {
+      window.customAlert("Failed to parse JSON file: " + err.message, "error", "Error");
+    }
+  };
+  reader.readAsText(file);
+  jsonFileInput.value = '';
+});
+
+document.getElementById('btn-layout-horizontal').addEventListener('click', () => {
+  arrangeGraph('horizontal');
+  closeAllDropdowns();
+});
+document.getElementById('btn-layout-vertical').addEventListener('click', () => {
+  arrangeGraph('vertical');
+  closeAllDropdowns();
+});
+
+// Clear canvas
+document.getElementById('btn-clear').addEventListener('click', () => {
+  if (window.AppGraph) {
+    window.customConfirm('Clear the canvas?', () => {
+      window.AppGraph.clear();
+      if (LiteGraph.LGraphCanvas.active_canvas) LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+      if (window.TriggerAutosave) window.TriggerAutosave(true);
+    }, null, 'Clear Workspace');
+  }
+  closeAllDropdowns();
+});
 
 // Sidebar collapse toggle
 document.getElementById('sidebar-toggle').addEventListener('click', () => {

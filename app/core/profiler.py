@@ -3,66 +3,60 @@ import time
 
 def profile_model(model, input_shape):
     """
-    Runs a dummy tensor through the model and measures execution time per layer using hooks.
+    Runs a dummy tensor through the model layer-by-layer.
+    Measures execution time, extracts output shapes, and pinpoints errors to specific nodes.
     """
     if not isinstance(input_shape, list) or len(input_shape) == 0:
         input_shape = [1, 3, 224, 224]
 
     device = next(model.parameters()).device if list(model.parameters()) else torch.device('cpu')
-    dummy_input = torch.randn(*input_shape).to(device)
+    x = torch.randn(*input_shape).to(device)
     
     profiling_results = []
     
-    # Store timing details here
-    start_times = {}
-    end_times = {}
-    
-    # Define hooks
-    def pre_hook(module, module_input, module_name):
-        start_times[module_name] = time.perf_counter()
+    # Warm up / run once to check for errors and initialize memory
+    temp_x = x.clone()
+    for name, layer in model.named_children():
+        node_id = name.split('_')[-1] if '_' in name else name
+        try:
+            with torch.no_grad():
+                temp_x = layer(temp_x)
+        except Exception as e:
+            raise RuntimeError(f"Node execution failed at node_id: {node_id}. Error: {str(e)}") from e
+            
+    # Measure time of forward execution layer-by-layer
+    for name, layer in model.named_children():
+        node_id = name.split('_')[-1] if '_' in name else name
         
-    def post_hook(module, module_input, output, module_name):
-        end_times[module_name] = time.perf_counter()
+        # Extract input shape
+        in_shape_val = None
+        if isinstance(x, torch.Tensor):
+            in_shape_val = list(x.shape)
+        elif isinstance(x, (list, tuple)) and len(x) > 0 and isinstance(x[0], torch.Tensor):
+            in_shape_val = list(x[0].shape)
+
+        # We know it won't fail here since the warmup succeeded
+        t0 = time.perf_counter()
+        with torch.no_grad():
+            out = layer(x)
+        t1 = time.perf_counter()
+        duration_ms = (t1 - t0) * 1000
         
-        duration_ms = (end_times[module_name] - start_times[module_name]) * 1000
+        # Extract output shape
+        shape_val = None
+        if isinstance(out, torch.Tensor):
+            shape_val = list(out.shape)
+        elif isinstance(out, (list, tuple)) and len(out) > 0 and isinstance(out[0], torch.Tensor):
+            shape_val = list(out[0].shape)
         
-        # Extract the original node ID from the module name e.g., "conv2d_4" -> "4"
-        node_id = module_name.split('_')[-1] if '_' in module_name else module_name
+        x = out # output becomes input to next layer
         
         profiling_results.append({
-            "name": module_name,
+            "name": name,
             "node_id": node_id,
-            "duration_ms": round(duration_ms, 4)
+            "duration_ms": round(duration_ms, 4),
+            "shape": shape_val,
+            "input_shape": in_shape_val
         })
-
-    # Register hooks on child modules
-    hook_handles = []
-    for name, layer in model.named_children():
-        h1 = layer.register_forward_pre_hook(lambda m, i, n=name: pre_hook(m, i, n))
-        h2 = layer.register_forward_hook(lambda m, i, o, n=name: post_hook(m, i, o, n))
-        hook_handles.extend([h1, h2])
-        
-    # Run the model once for warmup to eliminate initialization overhead
-    try:
-        with torch.no_grad():
-            _ = model(dummy_input)
-            
-        start_times.clear()
-        end_times.clear()
-        profiling_results.clear()
-        
-        # Run the model to profile
-        with torch.no_grad():
-            _ = model(dummy_input)
-            
-    except Exception as e:
-        # Clean up hooks before raising
-        for handle in hook_handles:
-            handle.remove()
-        raise RuntimeError(f"Model validation/profiling failed: {str(e)}")
-        
-    # Remove hooks
-    for handle in hook_handles:
-        handle.remove()
         
     return profiling_results

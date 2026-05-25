@@ -203,8 +203,7 @@ nav.topbar {
   background: var(--bg-toolbar);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
-  overflow-x: auto;
-  overflow-y: visible;
+  overflow: visible;
   z-index: 300;
   position: relative;
 }

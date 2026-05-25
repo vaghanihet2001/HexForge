@@ -110,9 +110,100 @@
                 } else {
                     icon.className = 'fa-solid fa-moon';
                 }
-            }
         });
     </script>
+
+    <!-- ====== CUSTOM DIALOG MODAL ====== -->
+    <div class="result-overlay" id="custom-alert-overlay" style="z-index: 200000; background: rgba(4,6,15,0.75); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; position: fixed; inset: 0;">
+      <div class="result-card" id="custom-alert-card" style="width: 440px; max-width: 90vw; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: 24px; box-shadow: var(--shadow-md), var(--shadow-glow); display: flex; flex-direction: column;">
+        <h3 id="custom-alert-title" style="margin: 0 0 12px; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-circle-info"></i> Notification
+        </h3>
+        <div id="custom-alert-body" style="font-size: 13px; color: var(--text-primary); margin: 0 0 20px; line-height: 1.55; max-height: 250px; overflow-y: auto; word-break: break-word; font-family: var(--font-sans);"></div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px; align-items: center;" id="custom-alert-footer">
+          <button class="btn btn-primary" id="custom-alert-btn-close" style="padding: 6px 16px; font-size: 12px; min-width: 80px;">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+        function showCustomAlert(options) {
+            const overlay = document.getElementById("custom-alert-overlay");
+            const titleEl = document.getElementById("custom-alert-title");
+            const bodyEl = document.getElementById("custom-alert-body");
+            const cardEl = document.getElementById("custom-alert-card");
+            const closeBtn = document.getElementById("custom-alert-btn-close");
+            const footer = document.getElementById("custom-alert-footer");
+            
+            let cancelBtn = document.getElementById("custom-alert-btn-cancel");
+            if (cancelBtn) cancelBtn.remove();
+
+            bodyEl.innerHTML = (options.message || "").replace(/\n/g, "<br>");
+            cardEl.style.borderLeft = "";
+            titleEl.style.color = "";
+            let iconHtml = '<i class="fa-solid fa-circle-info" style="color:var(--accent);"></i>';
+            
+            if (options.type === "error") {
+                iconHtml = '<i class="fa-solid fa-circle-xmark" style="color:var(--red);"></i>';
+                cardEl.style.borderLeft = "4px solid var(--red)";
+                titleEl.style.color = "var(--red)";
+            } else if (options.type === "success") {
+                iconHtml = '<i class="fa-solid fa-circle-check" style="color:var(--green);"></i>';
+                cardEl.style.borderLeft = "4px solid var(--green)";
+                titleEl.style.color = "var(--green)";
+            } else if (options.type === "warning") {
+                iconHtml = '<i class="fa-solid fa-circle-exclamation" style="color:var(--yellow);"></i>';
+                cardEl.style.borderLeft = "4px solid var(--yellow)";
+                titleEl.style.color = "var(--yellow)";
+            } else {
+                iconHtml = '<i class="fa-solid fa-circle-info" style="color:var(--accent);"></i>';
+                cardEl.style.borderLeft = "4px solid var(--accent)";
+                titleEl.style.color = "var(--accent)";
+            }
+            
+            titleEl.innerHTML = `${iconHtml} ${options.title || "Notification"}`;
+
+            const cleanup = () => {
+                overlay.style.display = "none";
+                closeBtn.removeEventListener("click", onConfirm);
+                if (cancelBtn) cancelBtn.removeEventListener("click", onCancel);
+            };
+
+            const onConfirm = () => {
+                cleanup();
+                if (typeof options.onConfirm === "function") options.onConfirm();
+            };
+
+            const onCancel = () => {
+                cleanup();
+                if (typeof options.onCancel === "function") options.onCancel();
+            };
+
+            closeBtn.addEventListener("click", onConfirm);
+            closeBtn.textContent = options.confirmText || "OK";
+
+            if (options.confirm) {
+                cancelBtn = document.createElement("button");
+                cancelBtn.id = "custom-alert-btn-cancel";
+                cancelBtn.className = "btn btn-ghost";
+                cancelBtn.style.cssText = "padding: 6px 16px; font-size: 12px; min-width: 80px;";
+                cancelBtn.textContent = options.cancelText || "Cancel";
+                cancelBtn.addEventListener("click", onCancel);
+                footer.insertBefore(cancelBtn, closeBtn);
+            }
+
+            overlay.style.display = "flex";
+        }
+
+        window.customAlert = function(message, type = "info", title = "Notification") {
+            showCustomAlert({ title: title, message: message, type: type, confirm: false });
+        };
+
+        window.customConfirm = function(message, onConfirm, onCancel, title = "Confirmation") {
+            showCustomAlert({ title: title, message: message, type: "warning", confirm: true, onConfirm: onConfirm, onCancel: onCancel });
+        };
+    </script>
+
     {% block extra_js %}{% endblock %}
 
 </body>

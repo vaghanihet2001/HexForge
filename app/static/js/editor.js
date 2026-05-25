@@ -82,6 +82,42 @@ document.addEventListener("DOMContentLoaded", () => {
         dim1:            { type:"number",label:"Dim 1",          step:1  },
     };
 
+    function getPropertyKeyFromWidgetName(wName) {
+        const lower = wName.toLowerCase().trim();
+        if (lower === "neg slope") return "negative_slope";
+        if (lower === "out padding") return "output_padding";
+        if (lower === "dropout p") return "p";
+        if (lower === "dim 0") return "dim0";
+        if (lower === "dim 1") return "dim1";
+        return lower.replace(/\s/g, '_');
+    }
+    window.GetPropertyKeyFromWidgetName = getPropertyKeyFromWidgetName;
+
+    function getBaseTitle(node) {
+        let title = node.title || "";
+        title = title.replace(/\s*\([^)]*ms\)(?:\s*\|\s*Out:\s*(?:\[[^\]]*\])?)?/g, "");
+        title = title.replace(/\s*\(⚠️ Error\)/g, "");
+        return title.trim();
+    }
+    window.GetBaseTitle = getBaseTitle;
+
+    function syncAllNodeWidgets(g) {
+        if (!g || !g._nodes) return;
+        g._nodes.forEach(node => {
+            if (node.widgets && node.properties) {
+                node.widgets.forEach(w => {
+                    if (w.name) {
+                        const propKey = getPropertyKeyFromWidgetName(w.name);
+                        if (node.properties[propKey] !== undefined) {
+                            w.value = node.properties[propKey];
+                        }
+                    }
+                });
+            }
+        });
+    }
+    window.SyncAllNodeWidgets = syncAllNodeWidgets;
+
     // ── RIGHT PANEL ──────────────────────────────────────────
     const panel      = document.getElementById('node-props-panel');
     const shell      = document.getElementById('editor-shell');
@@ -103,6 +139,33 @@ document.addEventListener("DOMContentLoaded", () => {
         badge.className = 'npp-type-badge';
         badge.textContent = node.type.replace('pytorch/', '').toUpperCase();
         nppBody.appendChild(badge);
+
+        // Input & Output Shapes badges if present
+        if (node.properties) {
+            const inShape = node.properties.input_shape;
+            const outShape = node.properties.output_shape || (node.type === "pytorch/input" ? node.properties.shape : null);
+
+            if (inShape || outShape) {
+                const shapesContainer = document.createElement('div');
+                shapesContainer.style.cssText = 'display:flex; flex-direction:column; gap:6px; margin-bottom:12px;';
+
+                if (inShape) {
+                    const inShapeBadge = document.createElement('div');
+                    inShapeBadge.style.cssText = 'font-size:11.5px;padding:6px 10px;background:rgba(51,204,255,0.08);border:1px solid rgba(51,204,255,0.2);color:var(--accent);border-radius:var(--radius-sm);font-family:var(--font-mono);display:flex;justify-content:space-between;align-items:center;gap:10px;';
+                    inShapeBadge.innerHTML = `<span>In Shape:</span><strong>${inShape}</strong>`;
+                    shapesContainer.appendChild(inShapeBadge);
+                }
+
+                if (outShape) {
+                    const outShapeBadge = document.createElement('div');
+                    outShapeBadge.style.cssText = 'font-size:11.5px;padding:6px 10px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);color:var(--green);border-radius:var(--radius-sm);font-family:var(--font-mono);display:flex;justify-content:space-between;align-items:center;gap:10px;';
+                    outShapeBadge.innerHTML = `<span>Out Shape:</span><strong>${outShape}</strong>`;
+                    shapesContainer.appendChild(outShapeBadge);
+                }
+
+                nppBody.appendChild(shapesContainer);
+            }
+        }
 
         // Node ID info
         const idRow = document.createElement('div');
@@ -162,7 +225,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     // sync LiteGraph widget if present
                     if (node.widgets) {
                         node.widgets.forEach(w => {
-                            if (w.name && w.name.toLowerCase().replace(/\s/g,'_') === fieldKey) {
+                            if (w.name && getPropertyKeyFromWidgetName(w.name) === fieldKey) {
                                 w.value = v;
                             }
                         });
@@ -605,14 +668,75 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     UnsqueezeNode.title="Unsqueeze"; LiteGraph.registerNodeType("pytorch/unsqueeze",UnsqueezeNode);
 
-    // ── DEMO GRAPH ───────────────────────────────────────────
-    var n_in  = LiteGraph.createNode("pytorch/input");    n_in.pos=[60,200];  graph.add(n_in);
-    var n_c2  = LiteGraph.createNode("pytorch/conv2d");   n_c2.pos=[310,200]; graph.add(n_c2);
-    var n_bn  = LiteGraph.createNode("pytorch/batchnorm2d"); n_bn.pos=[570,200]; graph.add(n_bn);
-    var n_rl  = LiteGraph.createNode("pytorch/relu");     n_rl.pos=[810,200]; graph.add(n_rl);
-    n_in.connect(0,n_c2,0); n_c2.connect(0,n_bn,0); n_bn.connect(0,n_rl,0);
+    // ── INITIAL GRAPH LOAD ────────────────────────────────────
+    let lastSavedData = "";
+    const savedData = localStorage.getItem("hexforge-autosave");
+    let loaded = false;
+    if (savedData) {
+        try {
+            graph.configure(JSON.parse(savedData));
+            if (graph._nodes) {
+                graph._nodes.forEach(n => {
+                    n.title = getBaseTitle(n);
+                    n.originalTitle = n.title;
+                });
+            }
+            syncAllNodeWidgets(graph);
+            lastSavedData = savedData;
+            loaded = true;
+        } catch (e) {
+            console.error("Failed to parse saved graph from localStorage:", e);
+        }
+    }
+    
+    if (!loaded) {
+        // ── DEMO GRAPH fallback ───────────────────────────────
+        var n_in  = LiteGraph.createNode("pytorch/input");    n_in.pos=[60,200];  graph.add(n_in);
+        var n_c2  = LiteGraph.createNode("pytorch/conv2d");   n_c2.pos=[310,200]; graph.add(n_c2);
+        var n_bn  = LiteGraph.createNode("pytorch/batchnorm2d"); n_bn.pos=[570,200]; graph.add(n_bn);
+        var n_rl  = LiteGraph.createNode("pytorch/relu");     n_rl.pos=[810,200]; graph.add(n_rl);
+        n_in.connect(0,n_c2,0); n_c2.connect(0,n_bn,0); n_bn.connect(0,n_rl,0);
+        lastSavedData = JSON.stringify(graph.serialize());
+    }
 
     graph.start();
+
+    // ── DEBOUNCED / PERIODIC AUTOSAVE SYSTEM ──────────────────
+    let saveTimeout = null;
+    function triggerAutosave(immediate = false) {
+        const indicator = document.getElementById("autosave-indicator");
+        if (indicator) {
+            indicator.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" style="color:var(--yellow);font-size:10px;"></i> Saving...';
+        }
+        
+        if (saveTimeout) clearTimeout(saveTimeout);
+        
+        const saveFunc = () => {
+            const currentData = JSON.stringify(graph.serialize());
+            if (currentData !== lastSavedData) {
+                localStorage.setItem("hexforge-autosave", currentData);
+                lastSavedData = currentData;
+            }
+            if (indicator) {
+                indicator.innerHTML = '<i class="fa-solid fa-circle-check" style="color:var(--green);font-size:10px;"></i> Autosaved';
+            }
+        };
+
+        if (immediate) {
+            saveFunc();
+        } else {
+            saveTimeout = setTimeout(saveFunc, 1000);
+        }
+    }
+    window.TriggerAutosave = triggerAutosave;
+
+    // Periodic check (every 3 seconds) for positions, properties, or connection changes
+    setInterval(() => {
+        const currentData = JSON.stringify(graph.serialize());
+        if (currentData !== lastSavedData) {
+            triggerAutosave(false);
+        }
+    }, 3000);
 
     window.addEventListener("resize", ()=>canvas.resize(container.clientWidth, container.clientHeight));
 

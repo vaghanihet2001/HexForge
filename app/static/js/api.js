@@ -50,8 +50,36 @@ document.addEventListener("editorLoaded", () => {
         return cleanNodes;
     }
 
+    function getBaseTitle(node) {
+        if (window.GetBaseTitle) {
+            return window.GetBaseTitle(node);
+        }
+        let title = node.title || "";
+        title = title.replace(/\s*\([^)]*ms\)(?:\s*\|\s*Out:\s*(?:\[[^\]]*\])?)?/g, "");
+        title = title.replace(/\s*\(⚠️ Error\)/g, "");
+        return title.trim();
+    }
+
     if (btnProfile) {
         btnProfile.addEventListener("click", () => {
+            if (window.CloseAllDropdowns) window.CloseAllDropdowns();
+
+            // Clear previous error/profiling indicators from all nodes
+            if (window.AppGraph && window.AppGraph._nodes) {
+                window.AppGraph._nodes.forEach(n => {
+                    n.has_error = false;
+                    delete n.onDrawBackground;
+                    n.boxcolor = null;
+                    n.color = null;
+                    const cleaned = getBaseTitle(n);
+                    n.title = cleaned;
+                    n.originalTitle = cleaned;
+                });
+                if (LiteGraph.LGraphCanvas.active_canvas) {
+                    LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+                }
+            }
+
             const graphData = serializeGraph();
             console.log("Sending graph data to backend...", graphData);
 
@@ -74,11 +102,21 @@ document.addEventListener("editorLoaded", () => {
                         data.results.forEach(res => {
                             const node = window.AppGraph.getNodeById(Number(res.node_id));
                             if (node) {
-                                // Change title temporarily
-                                if (!node.originalTitle) {
-                                    node.originalTitle = node.title;
-                                }
-                                node.title = `${node.originalTitle} (${res.duration_ms}ms)`;
+                                // Reset error status
+                                node.has_error = false;
+                                delete node.onDrawBackground;
+                                node.boxcolor = null;
+
+                                // Save shape
+                                const shapeStr = res.shape ? `[${res.shape.join(', ')}]` : '';
+                                node.properties.output_shape = shapeStr;
+                                const inShapeStr = res.input_shape ? `[${res.input_shape.join(', ')}]` : '';
+                                node.properties.input_shape = inShapeStr;
+
+                                // Clean name first
+                                const baseTitle = getBaseTitle(node);
+                                node.originalTitle = baseTitle;
+                                node.title = `${baseTitle} (${res.duration_ms}ms) | Out: ${shapeStr}`;
 
                                 // Color intensity based on relative slowness (red scale)
                                 const ratio = res.duration_ms / maxTime;
@@ -90,14 +128,45 @@ document.addEventListener("editorLoaded", () => {
                         if (LiteGraph.LGraphCanvas.active_canvas) {
                             LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
                         }
-                        alert("Profiling complete! Slowest nodes are highlighted in red.");
+                        window.customAlert("Profiling complete! Slowest nodes highlighted in red, output shapes traced.", "success", "Profiling Complete");
                     } else {
-                        alert("Error: " + data.message);
+                        // Highlight the failing node if error_node_id is provided
+                        if (data.error_node_id && window.AppGraph) {
+                            const node = window.AppGraph.getNodeById(Number(data.error_node_id));
+                            if (node) {
+                                const baseTitle = getBaseTitle(node);
+                                node.originalTitle = baseTitle;
+                                node.title = `${baseTitle} (⚠️ Error)`;
+                                node.color = "#ff6b6b";
+                                node.boxcolor = "#ff6b6b";
+                                
+                                // Glowing red border outline around the node
+                                node.has_error = true;
+                                node.onDrawBackground = function(ctx) {
+                                    ctx.save();
+                                    ctx.shadowColor = "#ff3333";
+                                    ctx.shadowBlur = 25;
+                                    ctx.strokeStyle = "#ff6b6b";
+                                    ctx.lineWidth = 4;
+                                    const titleHeight = LiteGraph.NODE_TITLE_HEIGHT || 20;
+                                    ctx.strokeRect(-2, -titleHeight - 2, this.size[0] + 4, this.size[1] + titleHeight + 4);
+                                    ctx.restore();
+                                };
+
+                                if (LiteGraph.LGraphCanvas.active_canvas) {
+                                    LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+                                }
+                                if (window.OpenNodePanel) {
+                                    window.OpenNodePanel(node);
+                                }
+                            }
+                        }
+                        window.customAlert(data.message, "error", "Profiling Error");
                     }
                 })
                 .catch(err => {
                     console.error("Error profiling model:", err);
-                    alert("An error occurred during profiling.");
+                    window.customAlert("An error occurred during profiling.", "error", "Error");
                 })
                 .finally(() => {
                     btnProfile.removeAttribute("aria-busy");
@@ -109,12 +178,13 @@ document.addEventListener("editorLoaded", () => {
     const btnEvaluate = document.getElementById("btn-evaluate");
     if (btnEvaluate) {
         btnEvaluate.addEventListener("click", () => {
+            if (window.CloseAllDropdowns) window.CloseAllDropdowns();
             const graphData = serializeGraph();
-            if (!graphData) return alert("Graph is empty!");
+            if (!graphData) return window.customAlert("Graph is empty!", "warning", "Warning");
 
             const fileInput = document.getElementById('dataset-upload');
             if (!fileInput.files.length) {
-                return alert("Please upload a .zip dataset first before evaluating!");
+                return window.customAlert("Please upload a .zip dataset first before evaluating!", "warning", "Dataset Missing");
             }
 
             const formData = new FormData();
@@ -164,12 +234,12 @@ document.addEventListener("editorLoaded", () => {
                             overlay.classList.add('visible');
                         }
                     } else {
-                        alert("Evaluation Error: " + data.message);
+                        window.customAlert(data.message, "error", "Evaluation Error");
                     }
                 })
                 .catch(err => {
                     console.error("Evaluation failed:", err);
-                    alert("An error occurred during evaluation.");
+                    window.customAlert("An error occurred during evaluation.", "error", "Error");
                 })
                 .finally(() => {
                     btnEvaluate.removeAttribute("aria-busy");
@@ -206,7 +276,8 @@ document.addEventListener("editorLoaded", () => {
 
     if (btnInspectOnnx) {
         btnInspectOnnx.addEventListener("click", () => {
-            if (!onnxUploadInput.files.length) return alert("Please upload an ONNX model first.");
+            if (window.CloseAllDropdowns) window.CloseAllDropdowns();
+            if (!onnxUploadInput.files.length) return window.customAlert("Please upload an ONNX model first.", "warning", "ONNX Missing");
 
             const file = onnxUploadInput.files[0];
             const formData = new FormData();
@@ -228,12 +299,12 @@ document.addEventListener("editorLoaded", () => {
                     // Render ONNX overlay
                     showONNXInspectorModal(res.data);
                 } else {
-                    alert("Failed to analyze ONNX: " + res.message);
+                    window.customAlert(res.message, "error", "Inspection Error");
                 }
             })
             .catch(err => {
                 console.error("ONNX Parsing Error:", err);
-                alert("An error occurred during ONNX parsing.");
+                window.customAlert("An error occurred during ONNX parsing.", "error", "Error");
             })
             .finally(() => {
                 btnInspectOnnx.removeAttribute("aria-busy");
@@ -354,324 +425,307 @@ document.addEventListener("editorLoaded", () => {
             }
         });
     }
-
+    
     const btnLoadCanvas = document.getElementById("btn-onnx-load-canvas");
-    if (btnLoadCanvas) {
-        btnLoadCanvas.addEventListener("click", () => {
-            const data = window.LastParsedONNX;
-            if (!data || !window.AppGraph) return alert("No ONNX data loaded.");
+    
+    function performLoadONNX(data) {
+        window.AppGraph.clear();
+        const tensorProducer = {};
+        data.inputs.forEach((inp, idx) => {
+            const node = LiteGraph.createNode("pytorch/input");
+            if (node) {
+                node.title = inp.name;
+                const shapeStr = inp.shape ? `[${inp.shape.join(', ')}]` : "[1, 3, 224, 224]";
+                node.properties.shape = shapeStr;
+                if (node.widgets && node.widgets[0]) {
+                    node.widgets[0].value = shapeStr;
+                }
+                node.pos = [80, 150 + idx * 120];
+                window.AppGraph.add(node);
+                tensorProducer[inp.name] = { node: node, slot: 0 };
+            }
+        });
 
-            if (!confirm("Are you sure you want to clear the editor canvas and load the ONNX model layers?")) {
-                return;
+        const constantValues = {};
+        data.nodes.forEach(n => {
+            if (n.op_type === "Constant") {
+                const outName = n.outputs[0];
+                if (outName && n.attributes && n.attributes.value !== undefined) {
+                    constantValues[outName] = n.attributes.value;
+                }
+            }
+        });
+
+        const getInputShape = (tensorName) => {
+            const modelInput = data.inputs.find(i => i.name === tensorName);
+            if (modelInput && modelInput.shape) return modelInput.shape;
+            const producingNode = data.nodes.find(node => node.outputs.includes(tensorName));
+            if (producingNode && producingNode.output_shapes && producingNode.output_shapes[tensorName]) {
+                return producingNode.output_shapes[tensorName];
+            }
+            return null;
+        };
+
+        const nonConstantNodes = data.nodes.filter(n => n.op_type !== "Constant");
+        const columns = {};
+
+        nonConstantNodes.forEach((n, idx) => {
+            let lgType = "pytorch/generic";
+            const op = n.op_type.toLowerCase();
+
+            if (op === "conv")                          lgType = "pytorch/conv2d";
+            else if (op === "convtranspose")            lgType = "pytorch/convtranspose2d";
+            else if (op === "relu")                     lgType = "pytorch/relu";
+            else if (op === "leakyrelu")                lgType = "pytorch/leakyrelu";
+            else if (op === "sigmoid")                  lgType = "pytorch/sigmoid";
+            else if (op === "tanh")                     lgType = "pytorch/tanh";
+            else if (op === "gelu")                     lgType = "pytorch/gelu";
+            else if (op === "elu")                      lgType = "pytorch/elu";
+            else if (op === "softmax")                  lgType = "pytorch/softmax";
+            else if (op === "maxpool")                  lgType = "pytorch/maxpool2d";
+            else if (op === "averagepool")              lgType = "pytorch/avgpool2d";
+            else if (op === "globalaveragepool")        lgType = "pytorch/globalavgpool2d";
+            else if (op === "flatten")                  lgType = "pytorch/flatten";
+            else if (op === "reshape")                  lgType = "pytorch/reshape";
+            else if (op === "gemm" || op === "matmul") lgType = "pytorch/linear";
+            else if (op === "batchnormalization")       lgType = "pytorch/batchnorm2d";
+            else if (op === "dropout")                  lgType = "pytorch/dropout";
+            else if (op === "lstm")                     lgType = "pytorch/lstm";
+            else if (op === "gru")                      lgType = "pytorch/gru";
+            else if (op === "concat")                   lgType = "pytorch/concat";
+            else if (op === "split")                    lgType = "pytorch/split";
+            else if (op === "transpose")                lgType = "pytorch/transpose";
+            else if (op === "squeeze")                  lgType = "pytorch/squeeze";
+            else if (op === "unsqueeze")                lgType = "pytorch/unsqueeze";
+            else if (op === "prelu")                    lgType = "pytorch/prelu";
+
+            const node = LiteGraph.createNode(lgType);
+            if (!node) return;
+
+            node.title = n.name;
+            
+            // Set input & output shape properties for visual feedback
+            const activeInputs = n.inputs.filter(inName => constantValues[inName] === undefined);
+            if (activeInputs.length > 0) {
+                const inShape = getInputShape(activeInputs[0]);
+                if (inShape) {
+                    if (!node.properties) node.properties = {};
+                    node.properties.input_shape = `[${inShape.join(', ')}]`;
+                }
+            }
+            if (n.outputs && n.outputs.length && n.output_shapes[n.outputs[0]]) {
+                if (!node.properties) node.properties = {};
+                node.properties.output_shape = `[${n.output_shapes[n.outputs[0]].join(', ')}]`;
             }
 
-            // Clear the graph
-            window.AppGraph.clear();
-
-            // Track mapped output tensors to connect to subsequent inputs
-            const tensorProducer = {}; // tensorName -> { node: LiteGraphNode, slot: number }
-
-            // Step 1: Create input nodes
-            data.inputs.forEach((inp, idx) => {
-                const node = LiteGraph.createNode("pytorch/input");
-                if (node) {
-                    node.title = inp.name;
-                    // Format shape array to string "[...]"
-                    const shapeStr = inp.shape ? `[${inp.shape.join(', ')}]` : "[1, 3, 224, 224]";
-                    node.properties.shape = shapeStr;
-                    
-                    // Update the widget display value if it exists
-                    if (node.widgets && node.widgets[0]) {
-                        node.widgets[0].value = shapeStr;
-                    }
-                    
-                    // Position model inputs vertically on the far left
-                    node.pos = [80, 150 + idx * 120];
-                    window.AppGraph.add(node);
-                    
-                    // Map this input tensor
-                    tensorProducer[inp.name] = { node: node, slot: 0 };
+            if (lgType === "pytorch/conv2d") {
+                if (n.attributes.strides && n.attributes.strides.length) {
+                    node.properties.stride = n.attributes.strides[0];
                 }
-            });
-
-            // Extract Constant node values and store them
-            const constantValues = {};
-            data.nodes.forEach(n => {
-                if (n.op_type === "Constant") {
-                    const outName = n.outputs[0];
-                    if (outName && n.attributes && n.attributes.value !== undefined) {
-                        constantValues[outName] = n.attributes.value;
-                    }
+                if (n.attributes.pads && n.attributes.pads.length) {
+                    node.properties.padding = n.attributes.pads[0];
                 }
-            });
-
-            // Filter out Constants from nodes we will draw on canvas
-            const nonConstantNodes = data.nodes.filter(n => n.op_type !== "Constant");
-
-            // Step 2: Iterate and create nodes in topological order (matching ONNX node list order)
-            nonConstantNodes.forEach((n, idx) => {
-                let lgType = "pytorch/generic";
-                const op = n.op_type.toLowerCase();
-
-                if (op === "conv")                          lgType = "pytorch/conv2d";
-                else if (op === "convtranspose")            lgType = "pytorch/convtranspose2d";
-                else if (op === "relu")                     lgType = "pytorch/relu";
-                else if (op === "leakyrelu")                lgType = "pytorch/leakyrelu";
-                else if (op === "sigmoid")                  lgType = "pytorch/sigmoid";
-                else if (op === "tanh")                     lgType = "pytorch/tanh";
-                else if (op === "gelu")                     lgType = "pytorch/gelu";
-                else if (op === "elu")                      lgType = "pytorch/elu";
-                else if (op === "softmax")                  lgType = "pytorch/softmax";
-                else if (op === "maxpool")                  lgType = "pytorch/maxpool2d";
-                else if (op === "averagepool")              lgType = "pytorch/avgpool2d";
-                else if (op === "globalaveragepool")        lgType = "pytorch/globalavgpool2d";
-                else if (op === "flatten")                  lgType = "pytorch/flatten";
-                else if (op === "reshape")                  lgType = "pytorch/reshape";
-                else if (op === "gemm" || op === "matmul") lgType = "pytorch/linear";
-                else if (op === "batchnormalization")       lgType = "pytorch/batchnorm2d";
-                else if (op === "dropout")                  lgType = "pytorch/dropout";
-                else if (op === "lstm")                     lgType = "pytorch/lstm";
-                else if (op === "gru")                      lgType = "pytorch/gru";
-                else if (op === "concat")                   lgType = "pytorch/concat";
-                else if (op === "split")                    lgType = "pytorch/split";
-                else if (op === "transpose")                lgType = "pytorch/transpose";
-                else if (op === "squeeze")                  lgType = "pytorch/squeeze";
-                else if (op === "unsqueeze")                lgType = "pytorch/unsqueeze";
-                else if (op === "prelu")                    lgType = "pytorch/prelu";
-
-                const node = LiteGraph.createNode(lgType);
-                if (!node) return;
-
-                node.title = n.name;
-
-                // Fill properties based on node attributes & shapes
-                if (lgType === "pytorch/conv2d") {
-                    // Stride
-                    if (n.attributes.strides && n.attributes.strides.length) {
-                        node.properties.stride = n.attributes.strides[0];
-                    }
-                    // Padding
-                    if (n.attributes.pads && n.attributes.pads.length) {
-                        node.properties.padding = n.attributes.pads[0];
-                    }
-                    // Kernel Size
-                    if (n.attributes.kernel_shape && n.attributes.kernel_shape.length) {
-                        node.properties.kernel_size = n.attributes.kernel_shape[0];
-                    }
-
-                    // Auto channels from output shapes & input shapes
-                    // Find output channels (from output shape second dim)
-                    const outTensorName = n.outputs[0];
-                    const outShape = n.output_shapes[outTensorName];
-                    if (outShape && outShape.length >= 2) {
-                        node.properties.out_channels = outShape[1];
-                    }
-
-                    // Find input channels (from parent output tensor)
-                    const inTensorName = n.inputs[0];
-                    const parent = tensorProducer[inTensorName];
-                    if (parent) {
-                        // Find if parent has shape data
-                        const parentShape = data.inputs.find(i => i.name === inTensorName)?.shape || 
-                                            data.nodes.find(node => node.outputs.includes(inTensorName))?.output_shapes?.[inTensorName];
-                        if (parentShape && parentShape.length >= 2) {
-                            node.properties.in_channels = parentShape[1];
-                        }
-                    }
-                    
-                    // Update conv widgets
-                    if (node.widgets) {
-                        node.widgets.forEach(w => {
-                            if (w.name === "In Channels") w.value = node.properties.in_channels;
-                            else if (w.name === "Out Channels") w.value = node.properties.out_channels;
-                            else if (w.name === "Kernel Size") w.value = node.properties.kernel_size;
-                            else if (w.name === "Stride") w.value = node.properties.stride;
-                            else if (w.name === "Padding") w.value = node.properties.padding;
-                        });
-                    }
-
-                } else if (lgType === "pytorch/linear") {
-                    // Auto features
-                    const outTensorName = n.outputs[0];
-                    const outShape = n.output_shapes[outTensorName];
-                    if (outShape && outShape.length >= 1) {
-                        node.properties.out_features = outShape[outShape.length - 1];
-                    }
-
-                    const inTensorName = n.inputs[0];
+                if (n.attributes.kernel_shape && n.attributes.kernel_shape.length) {
+                    node.properties.kernel_size = n.attributes.kernel_shape[0];
+                }
+                const outTensorName = n.outputs[0];
+                const outShape = n.output_shapes[outTensorName];
+                if (outShape && outShape.length >= 2) {
+                    node.properties.out_channels = outShape[1];
+                }
+                const inTensorName = n.inputs[0];
+                const parent = tensorProducer[inTensorName];
+                if (parent) {
                     const parentShape = data.inputs.find(i => i.name === inTensorName)?.shape || 
                                         data.nodes.find(node => node.outputs.includes(inTensorName))?.output_shapes?.[inTensorName];
-                    if (parentShape && parentShape.length >= 1) {
-                        node.properties.in_features = parentShape[parentShape.length - 1];
+                    if (parentShape && parentShape.length >= 2) {
+                        node.properties.in_channels = parentShape[1];
                     }
-                    
-                    // Update linear widgets
-                    if (node.widgets) {
-                        node.widgets.forEach(w => {
-                            if (w.name === "In Features") w.value = node.properties.in_features;
-                            else if (w.name === "Out Features") w.value = node.properties.out_features;
-                        });
-                    }
-
-                } else if (lgType === "pytorch/maxpool2d") {
-                    if (n.attributes.kernel_shape && n.attributes.kernel_shape.length) {
-                        node.properties.kernel_size = n.attributes.kernel_shape[0];
-                    }
-                    if (n.attributes.strides && n.attributes.strides.length) {
-                        node.properties.stride = n.attributes.strides[0];
-                    }
-                    
-                    if (node.widgets) {
-                        node.widgets.forEach(w => {
-                            if (w.name === "Kernel Size") w.value = node.properties.kernel_size;
-                            else if (w.name === "Stride") w.value = node.properties.stride;
-                        });
-                    }
-
-                } else if (lgType === "pytorch/flatten") {
-                    if (n.attributes.axis !== undefined) {
-                        node.properties.start_dim = n.attributes.axis;
-                    }
-                    if (node.widgets && node.widgets[0]) {
-                        node.widgets[0].value = node.properties.start_dim;
-                    }
-
-                } else if (lgType === "pytorch/concat") {
-                    if (n.attributes.axis !== undefined) {
-                        node.properties.dim = n.attributes.axis;
-                    }
-                    if (node.widgets && node.widgets[0]) {
-                        node.widgets[0].value = node.properties.dim;
-                    }
-
-                } else if (lgType === "pytorch/split") {
-                    if (n.attributes.axis !== undefined) {
-                        node.properties.dim = n.attributes.axis;
-                    }
-                    if (n.attributes.split !== undefined && n.attributes.split.length) {
-                        node.properties.split_size = n.attributes.split[0];
-                    }
-                    if (node.widgets) {
-                        node.widgets.forEach(w => {
-                            if (w.name === "Split Size") w.value = node.properties.split_size;
-                            else if (w.name === "Dim") w.value = node.properties.dim;
-                        });
-                    }
-
-                } else if (lgType === "pytorch/transpose") {
-                    if (n.attributes.perm !== undefined && n.attributes.perm.length >= 2) {
-                        node.properties.dim0 = n.attributes.perm[0];
-                        node.properties.dim1 = n.attributes.perm[1];
-                    }
-                    if (node.widgets) {
-                        node.widgets.forEach(w => {
-                            if (w.name === "Dim 0") w.value = node.properties.dim0;
-                            else if (w.name === "Dim 1") w.value = node.properties.dim1;
-                        });
-                    }
-
-                } else if (lgType === "pytorch/squeeze" || lgType === "pytorch/unsqueeze") {
-                    if (n.attributes.axes !== undefined && n.attributes.axes.length) {
-                        node.properties.dim = n.attributes.axes[0];
-                    } else if (n.attributes.axis !== undefined) {
-                        node.properties.dim = n.attributes.axis;
-                    }
-                    if (node.widgets && node.widgets[0]) {
-                        node.widgets[0].value = node.properties.dim;
-                    }
-
-                } else if (lgType === "pytorch/generic") {
-                    node.properties.op_type = n.op_type;
-                    node.properties.name = n.name;
-                    
-                    // Display generic details
-                    node.addWidget("text", "Op Type", n.op_type, () => {}, { disabled: true });
                 }
-
-                // Dynamically handle active/non-constant inputs
-                const activeInputs = n.inputs.filter(inName => constantValues[inName] === undefined);
-                
-                if (lgType === "pytorch/generic" && activeInputs.length > 1) {
-                    while (node.inputs && node.inputs.length > 0) {
-                        node.removeInput(0);
-                    }
-                    activeInputs.forEach(inName => {
-                        node.addInput(inName, "tensor");
+                if (node.widgets) {
+                    node.widgets.forEach(w => {
+                        if (w.name === "In Channels") w.value = node.properties.in_channels;
+                        else if (w.name === "Out Channels") w.value = node.properties.out_channels;
+                        else if (w.name === "Kernel Size") w.value = node.properties.kernel_size;
+                        else if (w.name === "Stride") w.value = node.properties.stride;
+                        else if (w.name === "Padding") w.value = node.properties.padding;
                     });
                 }
 
-                // Add text widgets for constant inputs
-                n.inputs.forEach(inName => {
-                    if (constantValues[inName] !== undefined) {
-                        const val = constantValues[inName];
-                        if (!node.properties) node.properties = {};
-                        node.properties[inName] = val;
-                        
-                        const displayVal = typeof val === 'object' ? JSON.stringify(val) : val;
-                        node.addWidget("text", inName, displayVal, (newVal) => {
-                            try {
-                                if (newVal.startsWith('[') || newVal.startsWith('{')) {
-                                    node.properties[inName] = JSON.parse(newVal);
-                                } else {
-                                    const num = Number(newVal);
-                                    node.properties[inName] = !isNaN(num) ? num : newVal;
-                                }
-                            } catch(e) {
-                                node.properties[inName] = newVal;
-                            }
-                        });
-                    }
-                });
-
-                // Layout / Positioning
-                let parentXMax = 80;
-                activeInputs.forEach(inName => {
-                    const prod = tensorProducer[inName];
-                    if (prod && prod.node.pos) {
-                        parentXMax = Math.max(parentXMax, prod.node.pos[0]);
-                    }
-                });
-
-                let x = parentXMax + 260;
-                
-                if (!columns[x]) {
-                    columns[x] = [];
+            } else if (lgType === "pytorch/linear") {
+                const outTensorName = n.outputs[0];
+                const outShape = n.output_shapes[outTensorName];
+                if (outShape && outShape.length >= 1) {
+                    node.properties.out_features = outShape[outShape.length - 1];
                 }
-                columns[x].push(node);
-                
-                let y = 180 + (columns[x].length - 1) * 155;
-                node.pos = [x, y];
+                const inTensorName = n.inputs[0];
+                const parentShape = data.inputs.find(i => i.name === inTensorName)?.shape || 
+                                    data.nodes.find(node => node.outputs.includes(inTensorName))?.output_shapes?.[inTensorName];
+                if (parentShape && parentShape.length >= 1) {
+                    node.properties.in_features = parentShape[parentShape.length - 1];
+                }
+                if (node.widgets) {
+                    node.widgets.forEach(w => {
+                        if (w.name === "In Features") w.value = node.properties.in_features;
+                        else if (w.name === "Out Features") w.value = node.properties.out_features;
+                    });
+                }
 
-                // Add to LiteGraph
-                window.AppGraph.add(node);
+            } else if (lgType === "pytorch/maxpool2d") {
+                if (n.attributes.kernel_shape && n.attributes.kernel_shape.length) {
+                    node.properties.kernel_size = n.attributes.kernel_shape[0];
+                }
+                if (n.attributes.strides && n.attributes.strides.length) {
+                    node.properties.stride = n.attributes.strides[0];
+                }
+                if (node.widgets) {
+                    node.widgets.forEach(w => {
+                        if (w.name === "Kernel Size") w.value = node.properties.kernel_size;
+                        else if (w.name === "Stride") w.value = node.properties.stride;
+                    });
+                }
 
-                // Make Connections
-                activeInputs.forEach((inName, activeIdx) => {
-                    const prod = tensorProducer[inName];
-                    if (prod) {
-                        const targetSlot = node.inputs && node.inputs.length > activeIdx ? activeIdx : 0;
-                        prod.node.connect(prod.slot, node, targetSlot);
-                    }
+            } else if (lgType === "pytorch/flatten") {
+                if (n.attributes.axis !== undefined) {
+                    node.properties.start_dim = n.attributes.axis;
+                }
+                if (node.widgets && node.widgets[0]) {
+                    node.widgets[0].value = node.properties.start_dim;
+                }
+
+            } else if (lgType === "pytorch/concat") {
+                if (n.attributes.axis !== undefined) {
+                    node.properties.dim = n.attributes.axis;
+                }
+                if (node.widgets && node.widgets[0]) {
+                    node.widgets[0].value = node.properties.dim;
+                }
+
+            } else if (lgType === "pytorch/split") {
+                if (n.attributes.axis !== undefined) {
+                    node.properties.dim = n.attributes.axis;
+                }
+                if (n.attributes.split !== undefined && n.attributes.split.length) {
+                    node.properties.split_size = n.attributes.split[0];
+                }
+                if (node.widgets) {
+                    node.widgets.forEach(w => {
+                        if (w.name === "Split Size") w.value = node.properties.split_size;
+                        else if (w.name === "Dim") w.value = node.properties.dim;
+                    });
+                }
+
+            } else if (lgType === "pytorch/transpose") {
+                if (n.attributes.perm !== undefined && n.attributes.perm.length >= 2) {
+                    node.properties.dim0 = n.attributes.perm[0];
+                    node.properties.dim1 = n.attributes.perm[1];
+                }
+                if (node.widgets) {
+                    node.widgets.forEach(w => {
+                        if (w.name === "Dim 0") w.value = node.properties.dim0;
+                        else if (w.name === "Dim 1") w.value = node.properties.dim1;
+                    });
+                }
+
+            } else if (lgType === "pytorch/squeeze" || lgType === "pytorch/unsqueeze") {
+                if (n.attributes.axes !== undefined && n.attributes.axes.length) {
+                    node.properties.dim = n.attributes.axes[0];
+                } else if (n.attributes.axis !== undefined) {
+                    node.properties.dim = n.attributes.axis;
+                }
+                if (node.widgets && node.widgets[0]) {
+                    node.widgets[0].value = node.properties.dim;
+                }
+
+            } else if (lgType === "pytorch/generic") {
+                node.properties.op_type = n.op_type;
+                node.properties.name = n.name;
+                node.addWidget("text", "Op Type", n.op_type, () => {}, { disabled: true });
+            }
+
+            const activeInputs = n.inputs.filter(inName => constantValues[inName] === undefined);
+            
+            if (lgType === "pytorch/generic" && activeInputs.length > 1) {
+                while (node.inputs && node.inputs.length > 0) {
+                    node.removeInput(0);
+                }
+                activeInputs.forEach(inName => {
+                    node.addInput(inName, "tensor");
                 });
+            }
 
-                // Record output tensor
-                if (n.outputs && n.outputs.length) {
-                    tensorProducer[n.outputs[0]] = { node: node, slot: 0 };
+            n.inputs.forEach(inName => {
+                if (constantValues[inName] !== undefined) {
+                    const val = constantValues[inName];
+                    if (!node.properties) node.properties = {};
+                    node.properties[inName] = val;
+                    const displayVal = typeof val === 'object' ? JSON.stringify(val) : val;
+                    node.addWidget("text", inName, displayVal, (newVal) => {
+                        try {
+                            if (newVal.startsWith('[') || newVal.startsWith('{')) {
+                                node.properties[inName] = JSON.parse(newVal);
+                            } else {
+                                const num = Number(newVal);
+                                node.properties[inName] = !isNaN(num) ? num : newVal;
+                            }
+                        } catch(e) {
+                            node.properties[inName] = newVal;
+                        }
+                    });
                 }
             });
 
-            // Clean up and refresh
-            if (LiteGraph.LGraphCanvas.active_canvas) {
-                LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
-            }
+            let parentXMax = 80;
+            activeInputs.forEach(inName => {
+                const prod = tensorProducer[inName];
+                if (prod && prod.node.pos) {
+                    parentXMax = Math.max(parentXMax, prod.node.pos[0]);
+                }
+            });
 
-            // Auto-arrange layout according to the current direction
-            if (typeof arrangeGraph === "function") {
-                arrangeGraph(window.CurrentLayoutDirection || "horizontal");
+            let x = parentXMax + 260;
+            if (!columns[x]) {
+                columns[x] = [];
             }
+            columns[x].push(node);
+            let y = 180 + (columns[x].length - 1) * 155;
+            node.pos = [x, y];
 
-            document.getElementById("onnx-overlay").classList.remove("visible");
-            alert("ONNX Model imported successfully!\nConstant nodes are inlined inside target nodes.\nUnsupported operators were loaded as Red Generic Nodes.");
+            window.AppGraph.add(node);
+
+            activeInputs.forEach((inName, activeIdx) => {
+                const prod = tensorProducer[inName];
+                if (prod) {
+                    const targetSlot = node.inputs && node.inputs.length > activeIdx ? activeIdx : 0;
+                    prod.node.connect(prod.slot, node, targetSlot);
+                }
+            });
+
+            if (n.outputs && n.outputs.length) {
+                tensorProducer[n.outputs[0]] = { node: node, slot: 0 };
+            }
+        });
+
+        if (LiteGraph.LGraphCanvas.active_canvas) {
+            LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+        }
+
+        if (typeof arrangeGraph === "function") {
+            arrangeGraph(window.CurrentLayoutDirection || "horizontal");
+        }
+
+        document.getElementById("onnx-overlay").classList.remove("visible");
+        window.customAlert("ONNX Model imported successfully!\nConstant nodes are inlined inside target nodes.\nUnsupported operators were loaded as Red Generic Nodes.", "success", "Import Success");
+    }
+
+    if (btnLoadCanvas) {
+        btnLoadCanvas.addEventListener("click", () => {
+            const data = window.LastParsedONNX;
+            if (!data || !window.AppGraph) return window.customAlert("No ONNX data loaded.", "warning", "Warning");
+
+            window.customConfirm("Are you sure you want to clear the editor canvas and load the ONNX model layers?", () => {
+                performLoadONNX(data);
+            }, null, "Confirm Load");
         });
     }
 
@@ -679,8 +733,9 @@ document.addEventListener("editorLoaded", () => {
     const btnExport = document.getElementById("btn-export");
     if (btnExport) {
         btnExport.addEventListener("click", () => {
+            if (window.CloseAllDropdowns) window.CloseAllDropdowns();
             const graphData = serializeGraph();
-            if (!graphData) return alert("Graph is empty!");
+            if (!graphData) return window.customAlert("Graph is empty!", "warning", "Warning");
 
             btnExport.setAttribute("aria-busy", "true");
             btnExport.textContent = "Exporting...";
@@ -705,11 +760,11 @@ document.addEventListener("editorLoaded", () => {
                 document.body.appendChild(a);
                 a.click();
                 window.URL.revokeObjectURL(url);
-                alert("Model exported successfully as hexforge_model.onnx!");
+                window.customAlert("Model exported successfully as hexforge_model.onnx!", "success", "Export Success");
             })
             .catch(err => {
                 console.error("Export Error:", err);
-                alert("Failed to export model: " + err.message);
+                window.customAlert("Failed to export model: " + err.message, "error", "Export Error");
             })
             .finally(() => {
                 btnExport.removeAttribute("aria-busy");
