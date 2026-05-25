@@ -1,0 +1,459 @@
+{% extends "base.html" %}
+{% block title %}Node Editor — HEXForge{% endblock %}
+
+{% block extra_head %}
+<style>.page-content{overflow:hidden;display:flex;flex-direction:column;}</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ====== FEATURE TOPBAR (HexFlow-style dropdown menus) ====== -->
+<div class="editor-topbar">
+
+  <!-- FILE dropdown -->
+  <div class="tb-dropdown-wrap" id="tb-file-wrap">
+    <button class="tb-menu-btn" id="tb-file-btn">
+      <i class="fa-solid fa-file"></i> File
+      <i class="fa-solid fa-chevron-down tb-caret"></i>
+    </button>
+    <div class="tb-dropdown" id="tb-file-menu">
+      <div class="tb-drop-header">Workspace</div>
+      <button class="tb-drop-item" id="btn-new-canvas">
+        <i class="fa-solid fa-file-circle-plus"></i> New Canvas
+      </button>
+      <button class="tb-drop-item" id="btn-save-json">
+        <i class="fa-solid fa-floppy-disk"></i> Save as JSON
+      </button>
+      <button class="tb-drop-item" id="btn-load-json">
+        <i class="fa-solid fa-folder-open"></i> Load JSON
+      </button>
+      <input type="file" id="json-file-input" accept=".json" style="display:none;">
+      <div class="tb-drop-divider"></div>
+      <button class="tb-drop-item tb-drop-danger" id="btn-clear">
+        <i class="fa-solid fa-trash-can"></i> Clear Canvas
+      </button>
+    </div>
+  </div>
+
+  <!-- GRAPH dropdown -->
+  <div class="tb-dropdown-wrap" id="tb-graph-wrap">
+    <button class="tb-menu-btn" id="tb-graph-btn">
+      <i class="fa-solid fa-diagram-project"></i> Graph
+      <i class="fa-solid fa-chevron-down tb-caret"></i>
+    </button>
+    <div class="tb-dropdown" id="tb-graph-menu">
+      <div class="tb-drop-header">Build</div>
+      <button class="tb-drop-item" id="btn-profile">
+        <i class="fa-solid fa-bolt"></i> Profile Model
+      </button>
+      <button class="tb-drop-item tb-drop-primary" id="btn-export">
+        <i class="fa-solid fa-box-archive"></i> Export ONNX
+      </button>
+    </div>
+  </div>
+
+  <!-- EVALUATE dropdown -->
+  <div class="tb-dropdown-wrap" id="tb-eval-wrap">
+    <button class="tb-menu-btn" id="tb-eval-btn">
+      <i class="fa-solid fa-flask"></i> Evaluate
+      <i class="fa-solid fa-chevron-down tb-caret"></i>
+    </button>
+    <div class="tb-dropdown" id="tb-eval-menu">
+      <div class="tb-drop-header">Test</div>
+      <label class="tb-drop-item" style="cursor:pointer;">
+        <i class="fa-solid fa-folder-open"></i> Load Dataset
+        <input type="file" id="dataset-upload" accept=".zip" style="display:none;">
+      </label>
+      <span id="upload-filename" style="font-size:11px;color:var(--accent);padding:0 14px;display:none;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+      <button class="tb-drop-item" id="btn-evaluate">
+        <i class="fa-solid fa-play"></i> Run Evaluate
+      </button>
+    </div>
+  </div>
+
+  <!-- ONNX dropdown -->
+  <div class="tb-dropdown-wrap" id="tb-onnx-wrap">
+    <button class="tb-menu-btn" id="tb-onnx-btn">
+      <i class="fa-solid fa-eye"></i> ONNX
+      <i class="fa-solid fa-chevron-down tb-caret"></i>
+    </button>
+    <div class="tb-dropdown" id="tb-onnx-menu">
+      <div class="tb-drop-header">Import</div>
+      <label class="tb-drop-item" style="cursor:pointer;">
+        <i class="fa-solid fa-upload"></i> Load .onnx File
+        <input type="file" id="onnx-upload" accept=".onnx" style="display:none;">
+      </label>
+      <span id="onnx-filename" style="font-size:11px;color:var(--accent);padding:0 14px;display:none;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+      <button class="tb-drop-item" id="btn-inspect-onnx" disabled>
+        <i class="fa-solid fa-magnifying-glass"></i> Inspect ONNX Model
+      </button>
+      <button class="tb-drop-item" id="btn-onnx-load-canvas" disabled>
+        <i class="fa-solid fa-diagram-project"></i> Load to Canvas
+      </button>
+    </div>
+  </div>
+
+  <!-- LAYOUT dropdown -->
+  <div class="tb-dropdown-wrap" id="tb-layout-wrap">
+    <button class="tb-menu-btn" id="tb-layout-btn">
+      <i class="fa-solid fa-table-columns"></i> Layout
+      <i class="fa-solid fa-chevron-down tb-caret"></i>
+    </button>
+    <div class="tb-dropdown" id="tb-layout-menu">
+      <div class="tb-drop-header">Arrange</div>
+      <button class="tb-drop-item" id="btn-layout-horizontal">
+        <i class="fa-solid fa-arrows-left-right"></i> Horizontal
+      </button>
+      <button class="tb-drop-item" id="btn-layout-vertical">
+        <i class="fa-solid fa-arrows-up-down"></i> Vertical
+      </button>
+    </div>
+  </div>
+
+  <!-- Autosave indicator (right side) -->
+  <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+    <span id="autosave-indicator" style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:5px;">
+      <i class="fa-solid fa-circle-check" style="color:var(--green);font-size:10px;"></i> Autosaved
+    </span>
+  </div>
+
+</div>
+
+
+<!-- ====== 3-COLUMN EDITOR SHELL ====== -->
+<div class="editor-shell" id="editor-shell">
+
+  <!-- Floating Toggle Button mimicking HexFlow -->
+  <button class="sidebar-toggle-btn" id="sidebar-toggle">
+    Operators <i class="fa-solid fa-cube"></i>
+  </button>
+
+  <!-- LEFT SIDEBAR — operators only -->
+  <aside class="editor-sidebar">
+    <div class="sidebar-search-wrap">
+      <div class="search-wrap-inner">
+        <span class="si">🔍</span>
+        <input type="text" id="node-search" class="sidebar-search" placeholder="Search operators...">
+      </div>
+    </div>
+
+    <div class="sidebar-section" data-category="input">
+      <p class="sidebar-section-title">Input</p>
+      <div class="node-layer-grid">
+        <button class="node-chip node-btn" data-type="pytorch/input">
+          <span class="chip-dot color-input"></span>Input
+        </button>
+      </div>
+    </div>
+
+    <div class="sidebar-section" data-category="conv">
+      <p class="sidebar-section-title">Convolutions</p>
+      <div class="node-layer-grid">
+        <button class="node-chip node-btn" data-type="pytorch/conv1d"><span class="chip-dot color-conv"></span>Conv1d</button>
+        <button class="node-chip node-btn" data-type="pytorch/conv2d"><span class="chip-dot color-conv"></span>Conv2d</button>
+        <button class="node-chip node-btn" data-type="pytorch/convtranspose2d"><span class="chip-dot color-conv"></span>ConvT2d</button>
+        <button class="node-chip node-btn" data-type="pytorch/linear"><span class="chip-dot color-linear"></span>Linear</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section" data-category="activation">
+      <p class="sidebar-section-title">Activations</p>
+      <div class="node-layer-grid">
+        <button class="node-chip node-btn" data-type="pytorch/relu"><span class="chip-dot color-relu"></span>ReLU</button>
+        <button class="node-chip node-btn" data-type="pytorch/leakyrelu"><span class="chip-dot color-relu"></span>LeakyReLU</button>
+        <button class="node-chip node-btn" data-type="pytorch/prelu"><span class="chip-dot color-relu"></span>PReLU</button>
+        <button class="node-chip node-btn" data-type="pytorch/sigmoid"><span class="chip-dot color-sigmoid"></span>Sigmoid</button>
+        <button class="node-chip node-btn" data-type="pytorch/tanh"><span class="chip-dot color-sigmoid"></span>Tanh</button>
+        <button class="node-chip node-btn" data-type="pytorch/gelu"><span class="chip-dot color-sigmoid"></span>GELU</button>
+        <button class="node-chip node-btn" data-type="pytorch/silu"><span class="chip-dot color-sigmoid"></span>SiLU</button>
+        <button class="node-chip node-btn" data-type="pytorch/elu"><span class="chip-dot color-sigmoid"></span>ELU</button>
+        <button class="node-chip node-btn" data-type="pytorch/softmax"><span class="chip-dot color-sigmoid"></span>Softmax</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section" data-category="pooling">
+      <p class="sidebar-section-title">Pooling</p>
+      <div class="node-layer-grid">
+        <button class="node-chip node-btn" data-type="pytorch/maxpool2d"><span class="chip-dot color-pool"></span>MaxPool2d</button>
+        <button class="node-chip node-btn" data-type="pytorch/avgpool2d"><span class="chip-dot color-pool"></span>AvgPool2d</button>
+        <button class="node-chip node-btn" data-type="pytorch/adaptiveavgpool2d"><span class="chip-dot color-pool"></span>AdaptAvg</button>
+        <button class="node-chip node-btn" data-type="pytorch/globalavgpool2d"><span class="chip-dot color-pool"></span>GlobalAvg</button>
+        <button class="node-chip node-btn" data-type="pytorch/maxpool1d"><span class="chip-dot color-pool"></span>MaxPool1d</button>
+        <button class="node-chip node-btn" data-type="pytorch/avgpool1d"><span class="chip-dot color-pool"></span>AvgPool1d</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section" data-category="norm">
+      <p class="sidebar-section-title">Normalization</p>
+      <div class="node-layer-grid">
+        <button class="node-chip node-btn" data-type="pytorch/batchnorm2d"><span class="chip-dot color-norm"></span>BatchNorm2d</button>
+        <button class="node-chip node-btn" data-type="pytorch/batchnorm1d"><span class="chip-dot color-norm"></span>BatchNorm1d</button>
+        <button class="node-chip node-btn" data-type="pytorch/layernorm"><span class="chip-dot color-norm"></span>LayerNorm</button>
+        <button class="node-chip node-btn" data-type="pytorch/dropout"><span class="chip-dot color-norm"></span>Dropout</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section" data-category="shape">
+      <p class="sidebar-section-title">Shape / Utility</p>
+      <div class="node-layer-grid">
+        <button class="node-chip node-btn" data-type="pytorch/flatten"><span class="chip-dot color-flatten"></span>Flatten</button>
+        <button class="node-chip node-btn" data-type="pytorch/reshape"><span class="chip-dot color-flatten"></span>Reshape</button>
+        <button class="node-chip node-btn" data-type="pytorch/upsample"><span class="chip-dot color-flatten"></span>Upsample</button>
+        <button class="node-chip node-btn" data-type="pytorch/concat"><span class="chip-dot color-flatten"></span>Concat</button>
+        <button class="node-chip node-btn" data-type="pytorch/split"><span class="chip-dot color-flatten"></span>Split</button>
+        <button class="node-chip node-btn" data-type="pytorch/transpose"><span class="chip-dot color-flatten"></span>Transpose</button>
+        <button class="node-chip node-btn" data-type="pytorch/squeeze"><span class="chip-dot color-flatten"></span>Squeeze</button>
+        <button class="node-chip node-btn" data-type="pytorch/unsqueeze"><span class="chip-dot color-flatten"></span>Unsqueeze</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section" data-category="recur">
+      <p class="sidebar-section-title">Recurrent</p>
+      <div class="node-layer-grid">
+        <button class="node-chip node-btn" data-type="pytorch/lstm"><span class="chip-dot color-recur"></span>LSTM</button>
+        <button class="node-chip node-btn" data-type="pytorch/gru"><span class="chip-dot color-recur"></span>GRU</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section" data-category="math">
+      <p class="sidebar-section-title">Math / Operators</p>
+      <div class="node-layer-grid">
+        <button class="node-chip node-btn" data-type="pytorch/add"><span class="chip-dot color-math"></span>Add</button>
+        <button class="node-chip node-btn" data-type="pytorch/sub"><span class="chip-dot color-math"></span>Subtract</button>
+        <button class="node-chip node-btn" data-type="pytorch/mul"><span class="chip-dot color-math"></span>Multiply</button>
+        <button class="node-chip node-btn" data-type="pytorch/div"><span class="chip-dot color-math"></span>Divide</button>
+        <button class="node-chip node-btn" data-type="pytorch/matmul"><span class="chip-dot color-math"></span>MatMul</button>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- CANVAS -->
+  <div class="canvas-wrapper">
+    <canvas id="editor-canvas" tabindex="1"></canvas>
+    <div class="canvas-statusbar"><div class="status-dot"></div><span>LiteGraph Engine Active</span></div>
+    <div class="canvas-hint">Scroll to zoom · Drag to pan · Click node to inspect</div>
+  </div>
+
+  <!-- RIGHT PROPERTIES PANEL -->
+  <div class="node-properties-panel hidden" id="node-props-panel">
+    <div class="npp-header">
+      <h3 id="npp-title">Node Properties</h3>
+      <button class="npp-close" id="npp-close" title="Close">✕</button>
+    </div>
+    <div class="npp-body" id="npp-body">
+      <p style="font-size:12px;color:var(--text-muted);">Click a node on the canvas to inspect its properties.</p>
+    </div>
+    <div class="npp-footer">
+      <button id="npp-delete" class="btn btn-danger btn-full btn-sm">🗑️ Delete Node</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- EVALUATION MODAL -->
+<div class="result-overlay" id="result-overlay">
+  <div class="result-card">
+    <h3>🧪 Evaluation Results</h3>
+    <div id="result-body"></div>
+    <div style="margin-top:18px;"><button class="btn btn-ghost btn-full" onclick="document.getElementById('result-overlay').classList.remove('visible')">Close</button></div>
+  </div>
+</div>
+
+<!-- ONNX INSPECTOR MODAL -->
+<div class="result-overlay" id="onnx-overlay">
+  <div class="result-card" style="width:580px;max-width:95vw;">
+    <h3>🔍 ONNX Model Inspector</h3>
+    <div class="onnx-meta-grid" id="onnx-meta-grid"></div>
+    <div class="onnx-io-header">Model Inputs</div>
+    <div id="onnx-inputs-list" style="margin-bottom:8px;"></div>
+    <div class="onnx-io-header">Model Outputs</div>
+    <div id="onnx-outputs-list" style="margin-bottom:10px;"></div>
+    <input type="text" id="onnx-search" class="onnx-search-box" placeholder="Search nodes by name or op type...">
+    <div class="onnx-nodes-container" id="onnx-nodes-list"></div>
+    <div style="margin-top:18px;display:flex;gap:10px;">
+      <button id="btn-onnx-load-canvas" class="btn btn-primary" style="flex:2;">🎨 Load to Canvas</button>
+      <button class="btn btn-ghost" style="flex:1;" onclick="document.getElementById('onnx-overlay').classList.remove('visible')">Close</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/litegraph.js') }}"></script>
+<script src="{{ url_for('static', filename='js/editor.js') }}"></script>
+<script>
+// Dataset upload label
+document.getElementById('dataset-upload').addEventListener('change', function(){
+  const el=document.getElementById('upload-filename');
+  if(this.files.length){el.textContent=this.files[0].name;el.style.display='inline';}
+  else{el.style.display='none';}
+});
+
+// ONNX upload label
+document.getElementById('onnx-upload').addEventListener('change', function(){
+  const el=document.getElementById('onnx-filename');
+  const btn=document.getElementById('btn-inspect-onnx');
+  if(this.files.length){el.textContent=this.files[0].name;el.style.display='inline';btn.removeAttribute('disabled');}
+  else{el.style.display='none';btn.setAttribute('disabled','true');}
+});
+
+// Operator search
+document.getElementById('node-search').addEventListener('input',function(){
+  const term=this.value.toLowerCase().trim();
+  document.querySelectorAll('.node-chip').forEach(c=>{
+    c.classList.toggle('hidden',term!==''&&!c.textContent.toLowerCase().includes(term));
+  });
+  document.querySelectorAll('.sidebar-section[data-category]').forEach(s=>{
+    const any=[...s.querySelectorAll('.node-chip')].some(c=>!c.classList.contains('hidden'));
+    s.style.display=(term!==''&&!any)?'none':'';
+  });
+});
+
+// Clear canvas
+document.getElementById('btn-clear').addEventListener('click',()=>{
+  if(window.AppGraph&&confirm('Clear the canvas?')){
+    window.AppGraph.clear();
+    if(LiteGraph.LGraphCanvas.active_canvas)LiteGraph.LGraphCanvas.active_canvas.setDirty(true,true);
+  }
+});
+
+// Layout arrangement direction toggle
+function arrangeGraph(direction) {
+  if (!window.AppGraph) return;
+  window.CurrentLayoutDirection = direction;
+  const graph = window.AppGraph;
+  const nodes = graph._nodes;
+  if (!nodes || nodes.length === 0) return;
+
+  const adj = {};
+  const inDegree = {};
+  nodes.forEach(n => {
+    adj[n.id] = [];
+    inDegree[n.id] = 0;
+  });
+
+  nodes.forEach(n => {
+    if (n.outputs) {
+      n.outputs.forEach(out => {
+        if (out.links) {
+          out.links.forEach(linkId => {
+            const link = graph.links[linkId];
+            if (link) {
+              const targetNode = graph.getNodeById(link.target_id);
+              if (targetNode) {
+                adj[n.id].push(targetNode.id);
+                inDegree[targetNode.id] = (inDegree[targetNode.id] || 0) + 1;
+              }
+            }
+          });
+        }
+      });
+    }
+  });
+
+  const depths = {};
+  const queue = [];
+  nodes.forEach(n => {
+    if (inDegree[n.id] === 0) {
+      queue.push(n.id);
+      depths[n.id] = 0;
+    }
+  });
+
+  if (queue.length === 0 && nodes.length > 0) {
+    queue.push(nodes[0].id);
+    depths[nodes[0].id] = 0;
+  }
+
+  while (queue.length > 0) {
+    const currId = queue.shift();
+    const currDepth = depths[currId];
+    adj[currId].forEach(neighborId => {
+      if (depths[neighborId] === undefined || depths[neighborId] < currDepth + 1) {
+        depths[neighborId] = currDepth + 1;
+        queue.push(neighborId);
+      }
+    });
+  }
+
+  const levels = {};
+  nodes.forEach(n => {
+    const d = depths[n.id] !== undefined ? depths[n.id] : 0;
+    if (!levels[d]) levels[d] = [];
+    levels[d].push(n);
+  });
+
+  const sortedLevels = Object.keys(levels).map(Number).sort((a, b) => a - b);
+  const startX = 150;
+  const startY = 180;
+  
+  if (direction === 'horizontal') {
+    const colSpacing = 280;
+    const rowSpacing = 160;
+    Object.keys(levels).forEach(levelStr => {
+      const level = parseInt(levelStr, 10);
+      const colNodes = levels[level];
+      const totalHeight = (colNodes.length - 1) * rowSpacing;
+      colNodes.forEach((n, idx) => {
+        n.horizontal = false;
+        n.pos[0] = startX + level * colSpacing;
+        n.pos[1] = startY + idx * rowSpacing - (totalHeight / 2);
+      });
+    });
+  } else {
+    const gapY = 85;
+    const colSpacing = 300;
+    const levelStartY = {};
+    levelStartY[0] = startY;
+
+    sortedLevels.forEach(level => {
+      const rowNodes = levels[level];
+      const currentY = levelStartY[level];
+      const totalWidth = (rowNodes.length - 1) * colSpacing;
+      
+      let maxBottomY = currentY;
+      
+      rowNodes.forEach((n, idx) => {
+        n.horizontal = true;
+        
+        const nodeWidth = n.size ? n.size[0] : 200;
+        const targetCenterX = startX + idx * colSpacing - (totalWidth / 2) + 200;
+        n.pos[0] = targetCenterX - nodeWidth / 2;
+        n.pos[1] = currentY;
+        
+        const nodeHeight = n.size ? n.size[1] : 80;
+        const bottomY = currentY + nodeHeight;
+        if (bottomY > maxBottomY) {
+          maxBottomY = bottomY;
+        }
+      });
+      
+      levelStartY[level + 1] = maxBottomY + gapY;
+    });
+  }
+
+  if (LiteGraph.LGraphCanvas.active_canvas) {
+    LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+  }
+}
+
+document.getElementById('btn-layout-horizontal').addEventListener('click', () => arrangeGraph('horizontal'));
+document.getElementById('btn-layout-vertical').addEventListener('click', () => arrangeGraph('vertical'));
+
+// Sidebar collapse toggle
+document.getElementById('sidebar-toggle').addEventListener('click', () => {
+  const shell = document.getElementById('editor-shell');
+  shell.classList.toggle('sidebar-collapsed');
+  
+  // Smoothly trigger canvas resize updates as the CSS transition runs
+  let count = 0;
+  const interval = setInterval(() => {
+    window.dispatchEvent(new Event('resize'));
+    count++;
+    if (count > 20) clearInterval(interval);
+  }, 15);
+});
+</script>
+{% endblock %}

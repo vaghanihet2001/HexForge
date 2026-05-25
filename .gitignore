@@ -1,0 +1,7 @@
+/data
+*.pt
+*.onnx
+*.zip
+*.csv
+**/__pycache__
+**/uploads

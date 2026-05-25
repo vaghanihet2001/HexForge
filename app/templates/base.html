@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="HEXForge — Visual PyTorch model builder, profiler, and ONNX exporter">
+    <title>{% block title %}HEXForge{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+    <nav class="topbar">
+        <div class="topbar-left">
+            <a href="{{ url_for('main.dashboard') }}" class="nav-brand">
+                <img src="{{ url_for('static', filename='logo-removebg.png') }}" alt="HEX Logo" class="logo-img">
+                <span class="logo-text">HexForge</span>
+            </a>
+
+            <ul class="nav-links">
+                <li><a href="{{ url_for('main.dashboard') }}" {% if request.endpoint=='main.dashboard' %}class="active"{% endif %}>
+                    📊 Dashboard
+                </a></li>
+                <li><a href="{{ url_for('main.editor') }}" {% if request.endpoint=='main.editor' %}class="active"{% endif %}>
+                    🧠 Node Editor
+                </a></li>
+            </ul>
+        </div>
+
+        <!-- Right side buttons mimicking HexFlow Header.jsx -->
+        <div class="topbar-right">
+            <!-- Theme Toggle -->
+            <button id="theme-toggle" class="header-btn" title="Toggle Theme">
+                <i class="fa-solid fa-moon"></i>
+            </button>
+
+            <!-- Info Button -->
+            <div class="header-dropdown-wrap" id="info-dropdown-wrap">
+                <button class="header-btn" id="info-btn" title="Developer Info">
+                    <i class="fa-solid fa-circle-info"></i>
+                </button>
+                <div class="header-dropdown card shadow-lg" id="info-dropdown">
+                    <div class="card-body">
+                        <h6>Made by: Het Vaghani</h6>
+                        <div class="dropdown-links-list">
+                            <a href="https://github.com/vaghanihet2001" target="_blank" rel="noopener noreferrer">
+                                <i class="fa-brands fa-github"></i> GitHub
+                            </a>
+                            <a href="https://www.linkedin.com/in/ai-ml-developer" target="_blank" rel="noopener noreferrer">
+                                <i class="fa-brands fa-linkedin"></i> LinkedIn
+                            </a>
+                            <a href="mailto:vaghanihet2001@gmail.com">
+                                <i class="fa-solid fa-envelope"></i> Email
+                            </a>
+                            <a href="https://hexverce.in/" target="_blank" rel="noopener noreferrer">
+                                <i class="fa-solid fa-globe"></i> HexVerce Website
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="page-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+    <script>
+        // Header interactive features (Info, User profile dropdowns and Theme toggler)
+        document.addEventListener('DOMContentLoaded', () => {
+            const infoBtn = document.getElementById('info-btn');
+            const infoDropdown = document.getElementById('info-dropdown');
+            const themeToggleBtn = document.getElementById('theme-toggle');
+
+            // Dropdown triggers
+            infoBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                infoDropdown.classList.toggle('show');
+            });
+
+            document.addEventListener('click', () => {
+                infoDropdown.classList.remove('show');
+            });
+
+            infoDropdown.addEventListener('click', (e) => e.stopPropagation());
+
+            // Theme toggle logic (persists via localStorage)
+            let currentTheme = localStorage.getItem('app-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            updateThemeIcon(currentTheme);
+
+            themeToggleBtn.addEventListener('click', () => {
+                currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', currentTheme);
+                localStorage.setItem('app-theme', currentTheme);
+                updateThemeIcon(currentTheme);
+                // Trigger event so iframe / canvas / LiteGraph can update if needed
+                document.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme: currentTheme } }));
+            });
+
+            function updateThemeIcon(theme) {
+                const icon = themeToggleBtn.querySelector('i');
+                if (theme === 'light') {
+                    icon.className = 'fa-solid fa-sun';
+                } else {
+                    icon.className = 'fa-solid fa-moon';
+                }
+            }
+        });
+    </script>
+    {% block extra_js %}{% endblock %}
+
+</body>
+</html>
