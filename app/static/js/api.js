@@ -49,6 +49,138 @@ document.addEventListener("editorLoaded", () => {
 
         return cleanNodes;
     }
+    window.SerializeGraph = serializeGraph;
+
+    let shapeInferTimeout = null;
+    function triggerShapeInference() {
+        if (shapeInferTimeout) clearTimeout(shapeInferTimeout);
+        shapeInferTimeout = setTimeout(() => {
+            if (window.SerializeGraph && window.AppGraph) {
+                const graphData = window.SerializeGraph();
+                if (!graphData || graphData.length === 0) return;
+
+                // Show loading indicator in the right-side panel for the active node
+                const activeNode = window.GetActiveNode ? window.GetActiveNode() : null;
+                if (activeNode && window.UpdateNodePanelShapes) {
+                    window.UpdateNodePanelShapes(activeNode, true);
+                }
+
+                fetch('/api/infer-shapes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ graph: graphData })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(err => { throw err; });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Update shapes on nodes
+                    if (window.AppGraph._nodes) {
+                        window.AppGraph._nodes.forEach(node => {
+                            if (node.type === "pytorch/input") {
+                                // Keep input node shape
+                                return;
+                            }
+                            
+                            const res = data.results.find(r => Number(r.node_id) === node.id);
+                            if (res) {
+                                node.properties.output_shape = res.shape ? `[${res.shape.join(', ')}]` : '';
+                                node.properties.input_shape = res.input_shape ? `[${res.input_shape.join(', ')}]` : '';
+                            } else {
+                                delete node.properties.output_shape;
+                                delete node.properties.input_shape;
+                            }
+                            
+                            if (window.RefreshStatusWidgets) {
+                                window.RefreshStatusWidgets(node);
+                            }
+                        });
+                    }
+                    
+                    // Clear red colors from all links
+                    if (window.AppGraph.links) {
+                        for (let linkId in window.AppGraph.links) {
+                            window.AppGraph.links[linkId].color = null;
+                        }
+                    }
+                    
+                    // Update active node panel shapes
+                    const currentActive = window.GetActiveNode ? window.GetActiveNode() : null;
+                    if (currentActive && window.UpdateNodePanelShapes) {
+                        window.UpdateNodePanelShapes(currentActive, false);
+                    }
+                    
+                    // Force canvas redraw
+                    if (LiteGraph.LGraphCanvas.active_canvas) {
+                        LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+                    }
+                })
+                .catch(err => {
+                    console.warn("Shape inference failed:", err);
+                    
+                    // Update shapes on nodes with whatever results we got
+                    const results = err.results || [];
+                    if (window.AppGraph._nodes) {
+                        window.AppGraph._nodes.forEach(node => {
+                            if (node.type === "pytorch/input") {
+                                return;
+                            }
+                            
+                            const res = results.find(r => Number(r.node_id) === node.id);
+                            if (res) {
+                                node.properties.output_shape = res.shape ? `[${res.shape.join(', ')}]` : '';
+                                node.properties.input_shape = res.input_shape ? `[${res.input_shape.join(', ')}]` : '';
+                            } else {
+                                delete node.properties.output_shape;
+                                delete node.properties.input_shape;
+                            }
+                            
+                            if (window.RefreshStatusWidgets) {
+                                window.RefreshStatusWidgets(node);
+                            }
+                        });
+                    }
+                    
+                    // Clear red colors from all links first
+                    if (window.AppGraph.links) {
+                        for (let linkId in window.AppGraph.links) {
+                            window.AppGraph.links[linkId].color = null;
+                        }
+                    }
+                    
+                    // Highlight the connection to the failing node in red
+                    if (err.error_node_id && window.AppGraph) {
+                        const errorNode = window.AppGraph.getNodeById(Number(err.error_node_id));
+                        if (errorNode && errorNode.inputs) {
+                            errorNode.inputs.forEach(input => {
+                                if (input.link !== null) {
+                                    const link = window.AppGraph.links[input.link];
+                                    if (link) {
+                                        link.color = "#ff3333";
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    
+                    // Update active node panel shapes
+                    const currentActive = window.GetActiveNode ? window.GetActiveNode() : null;
+                    if (currentActive && window.UpdateNodePanelShapes) {
+                        window.UpdateNodePanelShapes(currentActive, false);
+                    }
+                    
+                    // Force canvas redraw
+                    if (LiteGraph.LGraphCanvas.active_canvas) {
+                        LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+                    }
+                });
+            }
+        }, 300);
+    }
+    window.TriggerShapeInference = triggerShapeInference;
 
     function getBaseTitle(node) {
         if (window.GetBaseTitle) {
@@ -74,7 +206,18 @@ document.addEventListener("editorLoaded", () => {
                     const cleaned = getBaseTitle(n);
                     n.title = cleaned;
                     n.originalTitle = cleaned;
+                    if (n.properties) {
+                        delete n.properties.latency;
+                    }
+                    if (window.RefreshStatusWidgets) {
+                        window.RefreshStatusWidgets(n);
+                    }
                 });
+                if (window.AppGraph.links) {
+                    for (let linkId in window.AppGraph.links) {
+                        window.AppGraph.links[linkId].color = null;
+                    }
+                }
                 if (LiteGraph.LGraphCanvas.active_canvas) {
                     LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
                 }
@@ -112,11 +255,16 @@ document.addEventListener("editorLoaded", () => {
                                 node.properties.output_shape = shapeStr;
                                 const inShapeStr = res.input_shape ? `[${res.input_shape.join(', ')}]` : '';
                                 node.properties.input_shape = inShapeStr;
+                                node.properties.latency = `${res.duration_ms} ms`;
 
                                 // Clean name first
                                 const baseTitle = getBaseTitle(node);
                                 node.originalTitle = baseTitle;
-                                node.title = `${baseTitle} (${res.duration_ms}ms) | Out: ${shapeStr}`;
+                                node.title = baseTitle;
+
+                                if (window.RefreshStatusWidgets) {
+                                    window.RefreshStatusWidgets(node);
+                                }
 
                                 // Color intensity based on relative slowness (red scale)
                                 const ratio = res.duration_ms / maxTime;
@@ -642,8 +790,6 @@ document.addEventListener("editorLoaded", () => {
                 node.properties.name = n.name;
                 node.addWidget("text", "Op Type", n.op_type, () => {}, { disabled: true });
             }
-
-            const activeInputs = n.inputs.filter(inName => constantValues[inName] === undefined);
             
             if (lgType === "pytorch/generic" && activeInputs.length > 1) {
                 while (node.inputs && node.inputs.length > 0) {
@@ -692,6 +838,10 @@ document.addEventListener("editorLoaded", () => {
             node.pos = [x, y];
 
             window.AppGraph.add(node);
+
+            if (window.RefreshStatusWidgets) {
+                window.RefreshStatusWidgets(node);
+            }
 
             activeInputs.forEach((inName, activeIdx) => {
                 const prod = tensorProducer[inName];

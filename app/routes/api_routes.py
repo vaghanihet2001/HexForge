@@ -76,6 +76,64 @@ def profile_model_route():
             "traceback": traceback.format_exc()
         }), 400
 
+@api_bp.route('/infer-shapes', methods=['POST'])
+def infer_shapes_route():
+    data = request.json
+    graph_data = data.get('graph', [])
+    results = []
+    
+    try:
+        from app.core.builder import build_model
+        import torch
+        import traceback
+        
+        # Build model dynamically
+        model, input_shape, _ = build_model(graph_data)
+        
+        # Trace shapes layer-by-layer
+        device = next(model.parameters()).device if list(model.parameters()) else torch.device('cpu')
+        x = torch.randn(*input_shape).to(device)
+        
+        for name, layer in model.named_children():
+            node_id = name.split('_')[-1] if '_' in name else name
+            
+            in_shape_val = list(x.shape) if isinstance(x, torch.Tensor) else None
+            
+            try:
+                with torch.no_grad():
+                    out = layer(x)
+            except Exception as e:
+                raise RuntimeError(f"Node execution failed at node_id: {node_id}. Error: {str(e)}") from e
+                
+            shape_val = list(out.shape) if isinstance(out, torch.Tensor) else None
+            x = out
+            
+            results.append({
+                "node_id": node_id,
+                "shape": shape_val,
+                "input_shape": in_shape_val
+            })
+            
+        return jsonify({
+            "status": "success",
+            "results": results
+        })
+    except Exception as e:
+        err_msg = str(e)
+        error_node_id = None
+        if "node_id: " in err_msg:
+            try:
+                parts = err_msg.split("node_id: ")
+                error_node_id = parts[1].split(".")[0].split(" ")[0].split("\n")[0].split(",")[0].strip()
+            except Exception:
+                pass
+        return jsonify({
+            "status": "error",
+            "message": err_msg,
+            "error_node_id": error_node_id,
+            "results": results
+        }), 400
+
 @api_bp.route('/evaluate', methods=['POST'])
 def evaluate_model_route():
     from werkzeug.utils import secure_filename

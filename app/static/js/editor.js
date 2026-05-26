@@ -1,6 +1,38 @@
 document.addEventListener("DOMContentLoaded", () => {
     var graph  = new LiteGraph.LGraph();
     var canvas = new LiteGraph.LGraphCanvas("#editor-canvas", graph);
+
+    // Trigger shape inference on connection/node changes
+    graph.onNodeConnectionChange = function(type, node, slot, target_node, target_slot) {
+        if (window.TriggerShapeInference) {
+            window.TriggerShapeInference();
+        }
+    };
+    graph.onNodeAdded = function(node) {
+        if (window.TriggerShapeInference) {
+            window.TriggerShapeInference();
+        }
+    };
+    graph.onNodeRemoved = function(node) {
+        if (window.TriggerShapeInference) {
+            window.TriggerShapeInference();
+        }
+    };
+    
+    // Trigger shape inference on widget changes
+    LiteGraph.LGraphNode.prototype.onWidgetChanged = function(name, value, old_value, widget) {
+        if (window.TriggerShapeInference) {
+            window.TriggerShapeInference();
+        }
+    };
+
+    // Trigger shape inference on property changes
+    LiteGraph.LGraphNode.prototype.onPropertyChanged = function(name, value, prev_value) {
+        if (window.TriggerShapeInference) {
+            window.TriggerShapeInference();
+        }
+    };
+
     const container = document.getElementById('editor-canvas').parentElement;
     canvas.resize(container.clientWidth, container.clientHeight);
 
@@ -118,6 +150,97 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     window.SyncAllNodeWidgets = syncAllNodeWidgets;
 
+    function refreshStatusWidgets(node) {
+        if (!node.widgets) {
+            node.widgets = [];
+        }
+        
+        const drawStatusWidget = function(ctx, node, widget_width, y, H) {
+            const margin = 15;
+            const inner_width = widget_width - margin * 2;
+            
+            // Draw background box
+            ctx.strokeStyle = LiteGraph.WIDGET_OUTLINE_COLOR || "#666";
+            ctx.fillStyle = LiteGraph.WIDGET_BGCOLOR || "#222";
+            ctx.beginPath();
+            if (ctx.roundRect) {
+                ctx.roundRect(margin, y, inner_width, H, [H * 0.5]);
+            } else {
+                ctx.rect(margin, y, inner_width, H);
+            }
+            ctx.fill();
+            if (!this.disabled) {
+                ctx.stroke();
+            }
+            
+            // Draw label
+            ctx.font = "10px sans-serif";
+            ctx.fillStyle = LiteGraph.WIDGET_SECONDARY_TEXT_COLOR || "#999";
+            ctx.textAlign = "left";
+            const label = this.label || this.name;
+            ctx.fillText(label, margin * 2, y + H * 0.7);
+            
+            // Draw value on the right
+            ctx.fillStyle = LiteGraph.WIDGET_TEXT_COLOR || "#FFF";
+            ctx.textAlign = "right";
+            
+            const labelWidth = ctx.measureText(label).width;
+            const maxValWidth = inner_width - labelWidth - 15;
+            
+            let valStr = String(this.value);
+            ctx.font = "9px monospace";
+            let valWidth = ctx.measureText(valStr).width;
+            
+            if (valWidth > maxValWidth) {
+                // Truncate if still too long
+                while (valStr.length > 5 && valWidth > maxValWidth) {
+                    valStr = valStr.slice(0, -4) + "...";
+                    valWidth = ctx.measureText(valStr).width;
+                }
+            }
+            
+            ctx.fillText(valStr, widget_width - margin * 2 - 8, y + H * 0.7);
+        };
+        
+        // Output Shape widget
+        if (node.properties && node.properties.output_shape) {
+            let w = node.widgets.find(x => x.name === "Output Shape" || x.name === "Out Shape");
+            if (!w) {
+                w = node.addWidget("status", "Out Shape", node.properties.output_shape, () => {}, { disabled: true });
+                if (w) {
+                    w.disabled = true;
+                    w.draw = drawStatusWidget;
+                }
+            } else {
+                w.name = "Out Shape";
+                w.value = node.properties.output_shape;
+                w.draw = drawStatusWidget;
+            }
+        } else {
+            node.widgets = node.widgets.filter(x => x.name !== "Output Shape" && x.name !== "Out Shape");
+        }
+
+        // Latency widget
+        if (node.properties && node.properties.latency) {
+            let w = node.widgets.find(x => x.name === "Latency");
+            if (!w) {
+                w = node.addWidget("status", "Latency", node.properties.latency, () => {}, { disabled: true });
+                if (w) {
+                    w.disabled = true;
+                    w.draw = drawStatusWidget;
+                }
+            } else {
+                w.value = node.properties.latency;
+                w.draw = drawStatusWidget;
+            }
+        } else {
+            node.widgets = node.widgets.filter(x => x.name !== "Latency");
+        }
+        
+        node.setSize(node.computeSize());
+    }
+    window.RefreshStatusWidgets = refreshStatusWidgets;
+
     // ── RIGHT PANEL ──────────────────────────────────────────
     const panel      = document.getElementById('node-props-panel');
     const shell      = document.getElementById('editor-shell');
@@ -126,6 +249,56 @@ document.addEventListener("DOMContentLoaded", () => {
     const nppDelete  = document.getElementById('npp-delete');
     const nppClose   = document.getElementById('npp-close');
     let   activeNode = null;
+
+    function updateNodePanelShapes(node, isLoading = false) {
+        if (!activeNode || activeNode.id !== node.id) return;
+        
+        let shapesContainer = document.getElementById("npp-shapes-container");
+        if (!shapesContainer) {
+            shapesContainer = document.createElement('div');
+            shapesContainer.id = "npp-shapes-container";
+            shapesContainer.style.cssText = 'display:flex; flex-direction:column; gap:6px; margin-bottom:12px;';
+            
+            const badge = nppBody.querySelector('.npp-type-badge');
+            if (badge && badge.nextSibling) {
+                nppBody.insertBefore(shapesContainer, badge.nextSibling);
+            } else {
+                nppBody.appendChild(shapesContainer);
+            }
+        }
+        
+        shapesContainer.innerHTML = '';
+        
+        if (isLoading) {
+            const loadingBadge = document.createElement('div');
+            loadingBadge.style.cssText = 'font-size:11.5px;padding:6px 10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);color:var(--yellow);border-radius:var(--radius-sm);font-family:var(--font-mono);display:flex;align-items:center;gap:10px;';
+            loadingBadge.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> <span>Calculating shapes...</span>`;
+            shapesContainer.appendChild(loadingBadge);
+            return;
+        }
+        
+        const inShape = node.properties ? node.properties.input_shape : null;
+        const outShape = node.properties ? (node.properties.output_shape || (node.type === "pytorch/input" ? node.properties.shape : null)) : null;
+        
+        if (inShape || outShape) {
+            if (inShape) {
+                const inShapeBadge = document.createElement('div');
+                inShapeBadge.style.cssText = 'font-size:11.5px;padding:6px 10px;background:rgba(51,204,255,0.08);border:1px solid rgba(51,204,255,0.2);color:var(--accent);border-radius:var(--radius-sm);font-family:var(--font-mono);display:flex;justify-content:space-between;align-items:center;gap:10px;';
+                inShapeBadge.innerHTML = `<span>In Shape:</span><strong>${inShape}</strong>`;
+                shapesContainer.appendChild(inShapeBadge);
+            }
+            if (outShape) {
+                const outShapeBadge = document.createElement('div');
+                outShapeBadge.style.cssText = 'font-size:11.5px;padding:6px 10px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);color:var(--green);border-radius:var(--radius-sm);font-family:var(--font-mono);display:flex;justify-content:space-between;align-items:center;gap:10px;';
+                outShapeBadge.innerHTML = `<span>Out Shape:</span><strong>${outShape}</strong>`;
+                shapesContainer.appendChild(outShapeBadge);
+            }
+        } else {
+            shapesContainer.remove();
+        }
+    }
+    window.UpdateNodePanelShapes = updateNodePanelShapes;
+    window.GetActiveNode = () => activeNode;
 
     function openPanel(node) {
         activeNode = node;
@@ -141,31 +314,7 @@ document.addEventListener("DOMContentLoaded", () => {
         nppBody.appendChild(badge);
 
         // Input & Output Shapes badges if present
-        if (node.properties) {
-            const inShape = node.properties.input_shape;
-            const outShape = node.properties.output_shape || (node.type === "pytorch/input" ? node.properties.shape : null);
-
-            if (inShape || outShape) {
-                const shapesContainer = document.createElement('div');
-                shapesContainer.style.cssText = 'display:flex; flex-direction:column; gap:6px; margin-bottom:12px;';
-
-                if (inShape) {
-                    const inShapeBadge = document.createElement('div');
-                    inShapeBadge.style.cssText = 'font-size:11.5px;padding:6px 10px;background:rgba(51,204,255,0.08);border:1px solid rgba(51,204,255,0.2);color:var(--accent);border-radius:var(--radius-sm);font-family:var(--font-mono);display:flex;justify-content:space-between;align-items:center;gap:10px;';
-                    inShapeBadge.innerHTML = `<span>In Shape:</span><strong>${inShape}</strong>`;
-                    shapesContainer.appendChild(inShapeBadge);
-                }
-
-                if (outShape) {
-                    const outShapeBadge = document.createElement('div');
-                    outShapeBadge.style.cssText = 'font-size:11.5px;padding:6px 10px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);color:var(--green);border-radius:var(--radius-sm);font-family:var(--font-mono);display:flex;justify-content:space-between;align-items:center;gap:10px;';
-                    outShapeBadge.innerHTML = `<span>Out Shape:</span><strong>${outShape}</strong>`;
-                    shapesContainer.appendChild(outShapeBadge);
-                }
-
-                nppBody.appendChild(shapesContainer);
-            }
-        }
+        updateNodePanelShapes(node, false);
 
         // Node ID info
         const idRow = document.createElement('div');
@@ -232,6 +381,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                     if (LiteGraph.LGraphCanvas.active_canvas)
                         LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+                    if (window.TriggerShapeInference)
+                        window.TriggerShapeInference();
                 });
 
                 wrap.appendChild(input);
@@ -291,6 +442,9 @@ document.addEventListener("DOMContentLoaded", () => {
                         }
                         if (LiteGraph.LGraphCanvas.active_canvas) {
                             LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+                        }
+                        if (window.TriggerShapeInference) {
+                            window.TriggerShapeInference();
                         }
                     });
 
@@ -679,6 +833,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 graph._nodes.forEach(n => {
                     n.title = getBaseTitle(n);
                     n.originalTitle = n.title;
+                    refreshStatusWidgets(n);
                 });
             }
             syncAllNodeWidgets(graph);
@@ -793,4 +948,7 @@ document.addEventListener("DOMContentLoaded", () => {
     window.AppGraph = graph;
     window.OpenNodePanel = openPanel;
     document.dispatchEvent(new Event("editorLoaded"));
+    if (window.TriggerShapeInference) {
+        window.TriggerShapeInference();
+    }
 });

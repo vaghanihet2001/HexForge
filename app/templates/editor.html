@@ -522,6 +522,9 @@ jsonFileInput.addEventListener('change', (e) => {
           window.AppGraph._nodes.forEach(n => {
             n.title = window.GetBaseTitle(n);
             n.originalTitle = n.title;
+            if (window.RefreshStatusWidgets) {
+              window.RefreshStatusWidgets(n);
+            }
           });
         }
         if (window.SyncAllNodeWidgets) {

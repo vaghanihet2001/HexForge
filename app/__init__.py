@@ -13,7 +13,7 @@ def create_app():
     
     # Configuration
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'hexforge_dev_key')
-    app.config['MONGO_URI'] = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/')
+    app.config['MONGO_URI'] = os.environ.get('MONGO_URI', 'mongodb://localhost:27018/')
     app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
     
     # Ensure upload folder exists

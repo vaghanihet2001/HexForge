@@ -9517,7 +9517,7 @@ LGraphNode.prototype.executeAction = function(action)
             color = this.default_link_color;
         }
         if (link != null && this.highlighted_links[link.id]) {
-            color = "#FFF";
+            color = link.color || "#FFF";
         }
 
         start_dir = start_dir || LiteGraph.RIGHT;
