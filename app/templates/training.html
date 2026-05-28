@@ -1,0 +1,795 @@
+{% extends "base.html" %}
+{% block title %}Training — HEXForge{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+.train-shell{display:grid;grid-template-columns:340px 1fr;height:calc(100vh - var(--navbar-h));overflow:hidden;}
+.train-config{background:var(--bg-surface);border-right:1px solid var(--border-subtle);display:flex;flex-direction:column;overflow-y:auto;}
+.train-main{display:flex;flex-direction:column;overflow-y:auto;background:var(--bg-base);}
+.cfg-header{padding:14px 16px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.cfg-header h2{font-size:14px;font-weight:700;margin:0;}
+.cfg-body{flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
+.cfg-section{background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-md);overflow:hidden;}
+.cfg-section-hdr{padding:8px 12px;background:var(--bg-toolbar);border-bottom:1px solid var(--border-subtle);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:flex;align-items:center;gap:7px;}
+.cfg-section-body{padding:10px 12px;display:flex;flex-direction:column;gap:8px;}
+.cfg-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.cfg-field{display:flex;flex-direction:column;gap:4px;}
+.cfg-field label{font-size:10.5px;font-weight:600;color:var(--text-secondary);}
+.cfg-field input,.cfg-field select{padding:6px 9px;background:var(--bg-base);border:1px solid var(--border-default);border-radius:var(--radius-sm);color:var(--text-primary);font-size:12px;font-family:var(--font-sans);outline:none;transition:var(--transition);}
+.cfg-field input:focus,.cfg-field select:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-light);}
+.cfg-footer{padding:12px 14px;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
+.upload-zone{border:1.5px dashed var(--border-default);border-radius:var(--radius-md);padding:14px;text-align:center;cursor:pointer;transition:var(--transition);position:relative;}
+.upload-zone:hover{border-color:var(--accent);background:var(--accent-light);}
+.upload-zone.has-project-ds{border-color:var(--accent);background:var(--accent-glow);}
+.upload-zone input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;}
+.upload-zone i{font-size:20px;color:var(--text-muted);margin-bottom:5px;display:block;}
+.upload-zone p{font-size:11px;color:var(--text-secondary);margin:0;}
+.upload-name{font-size:10px;color:var(--accent);font-family:var(--font-mono);margin-top:4px;word-break:break-all;}
+/* Right main panels */
+.train-top{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--border-subtle);border-bottom:1px solid var(--border-subtle);flex-shrink:0;}
+.stat-pill{background:var(--bg-surface);padding:10px 16px;display:flex;flex-direction:column;gap:2px;}
+.stat-pill .sp-label{font-size:9.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);font-weight:600;}
+.stat-pill .sp-val{font-size:17px;font-weight:700;font-family:var(--font-mono);}
+.stat-pill .sp-sub{font-size:10.5px;color:var(--text-secondary);}
+/* Terminal */
+.terminal-panel{background:#0a0e1a;border-bottom:1px solid var(--border-subtle);flex:0 0 240px;display:flex;flex-direction:column;overflow:hidden;}
+.terminal-bar{display:flex;align-items:center;justify-content:space-between;padding:5px 12px;background:#0d1120;border-bottom:1px solid rgba(255,255,255,.07);}
+.terminal-bar span{font-size:10.5px;font-weight:700;letter-spacing:.5px;color:#7dd3fc;}
+.terminal-bar .tb-dots{display:flex;gap:5px;}
+.tb-dot{width:9px;height:9px;border-radius:50%;}
+.terminal-body{flex:1;overflow-y:auto;padding:6px 10px;font-family:var(--font-mono);font-size:11.5px;line-height:1.7;}
+.tl-epoch{color:#a78bfa;}
+.tl-info{color:#94a3b8;}
+.tl-success{color:#34d399;}
+.tl-warn{color:#fbbf24;}
+.tl-error{color:#f87171;}
+.tl-hdr{color:#7dd3fc;font-weight:700;}
+/* Charts area */
+.charts-area{padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px;flex-shrink:0;}
+.chart-card{background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:14px;display:flex;flex-direction:column;gap:8px;height:320px;box-sizing:border-box;}
+.chart-card-hdr{font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.7px;}
+.chart-card canvas{flex:1;min-height:0;}
+/* Progress bar */
+.ep-progress-wrap{padding:8px 14px;background:var(--bg-surface);border-bottom:1px solid var(--border-subtle);flex-shrink:0;display:flex;align-items:center;gap:10px;}
+.ep-progress-track{flex:1;height:6px;background:var(--bg-toolbar);border-radius:3px;overflow:hidden;}
+.ep-progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent-deep),var(--accent));transition:width .4s ease;width:0%;}
+.ep-progress-label{font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);white-space:nowrap;}
+/* Status badge */
+.status-chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;}
+.status-idle{background:rgba(148,163,184,.12);color:#94a3b8;}
+.status-running{background:rgba(51,204,255,.12);color:var(--accent);}
+.status-done{background:rgba(52,211,153,.12);color:#34d399;}
+.status-error{background:rgba(248,113,113,.12);color:#f87171;}
+.status-stopped{background:rgba(251,191,36,.12);color:#fbbf24;}
+.pulse-run{animation:pulseRun 1.2s ease-in-out infinite;}
+@keyframes pulseRun{0%,100%{opacity:1;}50%{opacity:.4;}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="train-shell">
+
+  <!-- ══ LEFT CONFIG PANEL ══ -->
+  <div class="train-config">
+    <div class="cfg-header">
+      <i class="fa-solid fa-dumbbell" style="color:var(--accent);"></i>
+      <h2>Training Configuration</h2>
+    </div>
+
+    <div class="cfg-body">
+
+      <!-- Dataset -->
+      <div class="cfg-section">
+        <div class="cfg-section-hdr"><i class="fa-solid fa-database"></i> Dataset</div>
+        <div class="cfg-section-body">
+          <div class="upload-zone" id="dataset-zone">
+            <input type="file" id="dataset-file" accept=".zip">
+            <i class="fa-solid fa-file-zipper"></i>
+            <p>Drop or click to upload dataset <code>.zip</code></p>
+            <p style="font-size:10px;color:var(--text-muted);margin-top:3px;">ImageFolder structure inside ZIP</p>
+            <div class="upload-name" id="dataset-name"></div>
+          </div>
+          <div class="cfg-row">
+            <div class="cfg-field">
+              <label>Train Split %</label>
+              <input type="number" id="cfg-val-split" value="80" min="50" max="95" step="5">
+            </div>
+            <div class="cfg-field">
+              <label>Batch Size</label>
+              <input type="number" id="cfg-batch-size" value="32" min="1" max="512">
+            </div>
+          </div>
+          <div class="cfg-field">
+            <label><input type="checkbox" id="cfg-augment" style="width:auto;margin-right:6px;">Data Augmentation (flip, jitter)</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hyperparams -->
+      <div class="cfg-section">
+        <div class="cfg-section-hdr"><i class="fa-solid fa-sliders"></i> Hyperparameters</div>
+        <div class="cfg-section-body">
+          <div class="cfg-row">
+            <div class="cfg-field">
+              <label>Epochs</label>
+              <input type="number" id="cfg-epochs" value="10" min="1" max="1000">
+            </div>
+            <div class="cfg-field">
+              <label>Learning Rate</label>
+              <input type="number" id="cfg-lr" value="0.001" min="1e-7" max="1" step="0.0001">
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div class="cfg-field">
+              <label>Weight Decay</label>
+              <input type="number" id="cfg-wd" value="0.0" min="0" step="0.0001">
+            </div>
+            <div class="cfg-field">
+              <label>Grad Clip (0=off)</label>
+              <input type="number" id="cfg-clip" value="0.0" min="0" step="0.1">
+            </div>
+          </div>
+          <div class="cfg-field">
+            <label>Momentum (SGD/RMS)</label>
+            <input type="number" id="cfg-momentum" value="0.9" min="0" max="0.999" step="0.01">
+          </div>
+        </div>
+      </div>
+
+      <!-- Optimizer / Loss / Scheduler -->
+      <div class="cfg-section">
+        <div class="cfg-section-hdr"><i class="fa-solid fa-gear"></i> Optimizer · Loss · Scheduler</div>
+        <div class="cfg-section-body">
+          <div class="cfg-field">
+            <label>Optimizer</label>
+            <select id="cfg-optimizer">
+              <option value="adam" selected>Adam</option>
+              <option value="adamw">AdamW</option>
+              <option value="sgd">SGD</option>
+              <option value="rmsprop">RMSprop</option>
+            </select>
+          </div>
+          <div class="cfg-field">
+            <label>Loss Function</label>
+            <select id="cfg-loss">
+              <option value="crossentropy" selected>CrossEntropyLoss (multi-class)</option>
+              <option value="bce">BCEWithLogitsLoss (binary)</option>
+              <option value="mse">MSELoss (regression)</option>
+              <option value="l1">L1Loss (MAE)</option>
+              <option value="huber">HuberLoss (robust)</option>
+            </select>
+          </div>
+          <div class="cfg-field">
+            <label>LR Scheduler</label>
+            <select id="cfg-scheduler">
+              <option value="none" selected>None</option>
+              <option value="steplr">StepLR</option>
+              <option value="cosine">CosineAnnealingLR</option>
+              <option value="plateau">ReduceLROnPlateau</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /cfg-body -->
+
+    <div class="cfg-footer">
+      <div id="project-version-badge" style="font-size:11.5px;font-weight:600;color:var(--accent);display:none;background:var(--accent-light);padding:6px 10px;border-radius:var(--radius-sm);border:1px solid rgba(51,204,255,0.25);margin-bottom:10px;align-items:center;gap:6px;">
+        <i class="fa-solid fa-folder-open"></i> <span id="badge-proj-name"></span> &middot; <span id="badge-ver-name"></span>
+      </div>
+      <div id="graph-status-banner" style="font-size:11px;padding:8px 10px;border-radius:var(--radius-sm);background:var(--bg-base);border:1px solid var(--border-subtle);color:var(--text-secondary);display:flex;align-items:center;gap:7px;"><i class="fa-solid fa-circle-notch fa-spin" style="font-size:10px;"></i> Checking model graph...</div>
+      <button class="btn btn-primary btn-full" id="btn-start-train" style="font-size:13px;padding:10px;">
+        <i class="fa-solid fa-play"></i> Start Training
+      </button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-danger btn-full" id="btn-stop-train" disabled>
+          <i class="fa-solid fa-stop"></i> Stop
+        </button>
+        <button class="btn btn-ghost btn-full" id="btn-download-model" disabled>
+          <i class="fa-solid fa-download"></i> Save .pt
+        </button>
+      </div>
+    </div>
+  </div><!-- /train-config -->
+
+  <!-- ══ RIGHT MAIN PANEL ══ -->
+  <div class="train-main">
+
+    <!-- Top stat pills -->
+    <div class="train-top">
+      <div class="stat-pill">
+        <span class="sp-label">Status</span>
+        <span class="sp-val" id="sp-status"><span class="status-chip status-idle">● Idle</span></span>
+      </div>
+      <div class="stat-pill">
+        <span class="sp-label">Epoch</span>
+        <span class="sp-val" id="sp-epoch">—</span>
+        <span class="sp-sub" id="sp-device">CPU</span>
+      </div>
+      <div class="stat-pill">
+        <span class="sp-label">Best Val Loss</span>
+        <span class="sp-val" id="sp-best-loss">—</span>
+        <span class="sp-sub" id="sp-eta">ETA: —</span>
+      </div>
+    </div>
+
+    <!-- Epoch progress bar -->
+    <div class="ep-progress-wrap">
+      <div class="ep-progress-track"><div class="ep-progress-fill" id="ep-progress-fill"></div></div>
+      <span class="ep-progress-label" id="ep-progress-label">0 / 0</span>
+    </div>
+
+    <!-- Terminal -->
+    <div class="terminal-panel">
+      <div class="terminal-bar">
+        <span><i class="fa-solid fa-terminal"></i> &nbsp;Training Console</span>
+        <div class="tb-dots">
+          <div class="tb-dot" style="background:#f87171;"></div>
+          <div class="tb-dot" style="background:#fbbf24;"></div>
+          <div class="tb-dot" style="background:#34d399;"></div>
+        </div>
+      </div>
+      <div class="terminal-body" id="terminal-body">
+        <span class="tl-info">HEXForge Training Console — ready.</span><br>
+        <span class="tl-info">Load your dataset and click <strong>Start Training</strong>.</span><br>
+      </div>
+      <div id="terminal-progress" style="padding: 6px 12px; background: #080c16; font-family: var(--font-mono); font-size: 11.5px; color: #34d399; border-top: 1px solid rgba(255,255,255,.05); display: none; white-space: pre;"></div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-area" id="charts-area">
+      <div class="chart-card">
+        <div class="chart-card-hdr"><i class="fa-solid fa-chart-line" style="color:var(--accent);"></i> &nbsp;Loss</div>
+        <canvas id="chart-loss"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-hdr"><i class="fa-solid fa-bullseye" style="color:#34d399;"></i> &nbsp;Accuracy</div>
+        <canvas id="chart-acc"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-hdr"><i class="fa-solid fa-crosshairs" style="color:#a78bfa;"></i> &nbsp;Precision &amp; Recall</div>
+        <canvas id="chart-pr"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-hdr"><i class="fa-solid fa-trophy" style="color:#fbbf24;"></i> &nbsp;F1 Score &amp; LR</div>
+        <canvas id="chart-f1"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-hdr"><i class="fa-solid fa-microchip" style="color:#fb7185;"></i> &nbsp;System Resource Usage</div>
+        <canvas id="chart-resources"></canvas>
+      </div>
+    </div>
+
+    <!-- Live Validation Samples -->
+    <div class="chart-card" id="val-samples-card" style="margin: 0 16px 20px 16px; min-height: auto; display: none; flex-direction: column; flex-shrink: 0;">
+      <div class="chart-card-hdr">
+        <i class="fa-solid fa-images" style="color:var(--accent);"></i> &nbsp;Live Validation Samples (Updated per epoch)
+      </div>
+      <div style="display: flex; gap: 16px; justify-content: space-around; padding: 12px 16px; flex-wrap: wrap; width: 100%; box-sizing: border-box;" id="val-samples-container">
+        <!-- Live samples rendered dynamically -->
+      </div>
+    </div>
+
+  </div><!-- /train-main -->
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const urlParams = new URLSearchParams(window.location.search);
+const activeVersionId = urlParams.get('version_id');
+let loadedVersionGraph = null;
+let hasProjectDataset = false;
+let sessionTimestamp = Date.now();
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ─── Check graph on load ─────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // ── 1. Check graph banner ──────────────────────────────────────────────────
+  const banner = document.getElementById('graph-status-banner');
+  
+  if (activeVersionId) {
+    // Show loading badge
+    const badge = document.getElementById("project-version-badge");
+    const badgeProj = document.getElementById("badge-proj-name");
+    const badgeVer = document.getElementById("badge-ver-name");
+    if (badge && badgeProj && badgeVer) {
+      badgeProj.textContent = "Loading project...";
+      badgeVer.textContent = "vX";
+      badge.style.display = "inline-flex";
+    }
+
+    // Fetch version graph from server
+    fetch(`/api/versions/${activeVersionId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success' && data.version) {
+          const v = data.version;
+          loadedVersionGraph = v.graph;
+          if (badgeVer) badgeVer.textContent = v.version_name;
+
+          // Fetch project details to show name
+          fetch(`/api/projects/${v.project_id}`)
+            .then(pr => pr.json())
+            .then(pdata => {
+              if (pdata.status === 'success' && badgeProj) {
+                badgeProj.textContent = pdata.project.name;
+                if (pdata.project.dataset) {
+                  hasProjectDataset = true;
+                  window.projectDatasetName = pdata.project.dataset.filename;
+                  window.projectDatasetSamples = pdata.project.dataset.num_samples;
+                  window.projectDatasetClasses = pdata.project.dataset.num_classes;
+                  const zone = document.getElementById('dataset-zone');
+                  if (zone) {
+                    zone.classList.add('has-project-ds');
+                    document.getElementById('dataset-name').innerHTML = `
+                      <div style="color: var(--accent); font-weight: 600; margin-top: 6px;">
+                        <i class="fa-solid fa-check-double"></i> Using Project Dataset: ${escapeHtml(pdata.project.dataset.filename)}
+                      </div>
+                      <div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;">
+                        (${pdata.project.dataset.num_samples} images, ${pdata.project.dataset.num_classes} classes)
+                      </div>
+                    `;
+                  }
+                }
+              }
+            });
+
+          // Update banner
+          const nodeCount = (loadedVersionGraph.nodes || []).length;
+          if (nodeCount === 0) {
+            banner.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:var(--yellow);"></i> Empty model found &mdash; <a href="/editor?version_id=' + activeVersionId + '" style="color:var(--accent);">build it in the Node Editor</a>';
+            banner.style.borderColor = 'var(--yellow)';
+          } else {
+            banner.innerHTML = '<i class="fa-solid fa-circle-check" style="color:var(--green);"></i> Model loaded &mdash; <strong>' + nodeCount + '</strong> nodes from DB Version';
+            banner.style.borderColor = 'var(--green)';
+            banner.style.color = 'var(--text-primary)';
+          }
+        } else {
+          banner.innerHTML = '<i class="fa-solid fa-circle-xmark" style="color:var(--red);"></i> Failed to load version. <a href="/projects" style="color:var(--accent);">Back to Projects</a>';
+          banner.style.borderColor = 'var(--red)';
+        }
+      })
+      .catch(err => {
+        banner.innerHTML = '<i class="fa-solid fa-circle-xmark" style="color:var(--red);"></i> Error loading version graph: ' + err.message;
+        banner.style.borderColor = 'var(--red)';
+      });
+  } else {
+    // Fallback: LocalStorage autosave
+    const rawSaved = localStorage.getItem('hexforge-autosave');
+    if (!rawSaved) {
+      banner.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:var(--yellow);"></i> No model found &mdash; <a href="/editor" style="color:var(--accent);">build one in the Node Editor</a>';
+      banner.style.borderColor = 'var(--yellow)';
+    } else {
+      try {
+        const rawData = JSON.parse(rawSaved);
+        const nodeCount = (rawData.nodes || []).length;
+        if (nodeCount === 0) throw new Error('empty graph');
+        banner.innerHTML = '<i class="fa-solid fa-circle-check" style="color:var(--green);"></i> Model loaded &mdash; <strong>' + nodeCount + '</strong> nodes from Node Editor';
+        banner.style.borderColor = 'var(--green)';
+        banner.style.color = 'var(--text-primary)';
+      } catch(e) {
+        banner.innerHTML = '<i class="fa-solid fa-circle-xmark" style="color:var(--red);"></i> Could not read graph. <a href="/editor" style="color:var(--accent);">Rebuild in Node Editor</a>';
+        banner.style.borderColor = 'var(--red)';
+      }
+    }
+  }
+
+  // ── 2. Resume any in-progress or completed training ────────────────────────
+  resumeTrainingState();
+});
+
+function updateValSamples(samples) {
+  const card = document.getElementById('val-samples-card');
+  const container = document.getElementById('val-samples-container');
+  if (!samples || !samples.length) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'flex';
+  container.innerHTML = samples.map(s => {
+    const isCorrect = String(s.prediction) === String(s.label);
+    const predColor = isCorrect ? '#34d399' : '#f87171';
+    return `
+      <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px; width: 220px; display: flex; flex-direction: column; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <img src="${s.image_url}?t=${sessionTimestamp}" style="width: 120px; height: 120px; object-fit: contain; border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--bg-base);" alt="Validation Sample">
+        <div style="width: 100%; display: flex; flex-direction: column; gap: 4px; font-size: 11.5px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-muted);">Ground Truth:</span>
+            <span style="font-weight: 700; color: var(--text-primary);">${escHtml(s.label)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-muted);">Prediction:</span>
+            <span style="font-weight: 700; color: ${predColor};">${escHtml(s.prediction)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-muted);">Confidence:</span>
+            <span style="font-weight: 700; color: var(--accent);">${s.confidence}%</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateTerminalProgress(barText) {
+  const progEl = document.getElementById('terminal-progress');
+  if (barText) {
+    progEl.textContent = barText;
+    progEl.style.display = 'block';
+  } else {
+    progEl.style.display = 'none';
+  }
+}
+
+// Called on every page load — restores live or finished training state
+async function resumeTrainingState() {
+  try {
+    // Fetch full history + ALL logs from offset 0
+    const res   = await fetch('/api/train/status?since=0');
+    const state = await res.json();
+    const status = state.status;
+
+    if (status === 'idle') return; // Nothing running, nothing to restore
+
+    // Restore charts from history
+    if (state.history) updateCharts(state.history);
+
+    // Restore all logs into terminal
+    terminal.innerHTML = '';
+    appendLogs(state.logs || [], false);
+    terminal.scrollTop = terminal.scrollHeight;
+    logOffset = state.log_offset || (state.logs || []).length;
+
+    // Update top bar + progress
+    updateTopBar(state);
+
+    // Update terminal progress line and validation samples
+    updateTerminalProgress(state.progress_bar);
+    updateValSamples(state.val_samples);
+
+    if (status === 'running') {
+      // Training is live — resume polling immediately
+      document.getElementById('btn-start-train').disabled = true;
+      document.getElementById('btn-stop-train').disabled  = false;
+      document.getElementById('btn-download-model').disabled = true;
+      startPolling();
+    } else {
+      // Training finished (done / stopped / error) — restore final UI state
+      document.getElementById('btn-start-train').disabled = false;
+      document.getElementById('btn-stop-train').disabled  = true;
+      if (state.model_path) {
+        document.getElementById('btn-download-model').disabled = false;
+      }
+    }
+  } catch(e) {
+    console.warn('Could not resume training state:', e);
+  }
+}
+
+// ─── Chart setup ─────────────────────────────────────────────────────────────
+const CHART_DEFAULTS = {
+  responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+  plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 }, boxWidth: 12 } } },
+  scales: {
+    x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.04)' } },
+    y: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.04)' } }
+  }
+};
+
+function mkChart(id, datasets, extraOptions = {}) {
+  const ctx = document.getElementById(id).getContext('2d');
+  const opts = JSON.parse(JSON.stringify(CHART_DEFAULTS));
+  if (extraOptions.scales) {
+    Object.assign(opts.scales, extraOptions.scales);
+  }
+  return new Chart(ctx, { type: 'line', data: { labels: [], datasets }, options: opts });
+}
+
+const cLoss = mkChart('chart-loss', [
+  { label: 'Train Loss', data: [], borderColor: '#33ccff', backgroundColor: 'rgba(51,204,255,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 },
+  { label: 'Val Loss',   data: [], borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 }
+]);
+const cAcc = mkChart('chart-acc', [
+  { label: 'Train Acc', data: [], borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 },
+  { label: 'Val Acc',   data: [], borderColor: '#6ee7b7', backgroundColor: 'rgba(110,231,183,.06)', tension: 0.35, pointRadius: 2, borderWidth: 2, borderDash: [4,3] }
+], { scales: { y: { min: 0, max: 100, ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.04)' } } } });
+const cPR = mkChart('chart-pr', [
+  { label: 'Precision', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 },
+  { label: 'Recall',    data: [], borderColor: '#fb923c', backgroundColor: 'rgba(251,146,60,.08)',  tension: 0.35, pointRadius: 2, borderWidth: 2 }
+], { scales: { y: { min: 0, max: 100, ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.04)' } } } });
+const cF1 = mkChart('chart-f1', [
+  { label: 'F1', data: [], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2, yAxisID: 'y' },
+  { label: 'LR', data: [], borderColor: '#94a3b8', backgroundColor: 'transparent', tension: 0.35, pointRadius: 2, borderWidth: 1.5, borderDash: [3,3], yAxisID: 'y1' }
+], { scales: { y: { min: 0, max: 100, ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.04)' } } } });
+// Dual-axis for F1 chart
+cF1.options.scales.y1 = { type: 'linear', position: 'right', ticks: { color: '#64748b', font: { size: 9 } }, grid: { drawOnChartArea: false } };
+
+const cResources = mkChart('chart-resources', [
+  { label: 'CPU Usage %', data: [], borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 },
+  { label: 'GPU Usage %', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 },
+  { label: 'RAM Usage %', data: [], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 }
+], { scales: { y: { min: 0, max: 100, ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.04)' } } } });
+
+function updateCharts(h) {
+  const epochs = h.train_loss.map((_,i) => `Ep ${i+1}`);
+  [cLoss, cAcc, cPR, cF1, cResources].forEach(c => { c.data.labels = epochs; });
+
+  cLoss.data.datasets[0].data = h.train_loss;
+  cLoss.data.datasets[1].data = h.val_loss;
+  cAcc.data.datasets[0].data  = h.train_acc.map(v => +(v*100).toFixed(2));
+  cAcc.data.datasets[1].data  = h.val_acc.map(v   => +(v*100).toFixed(2));
+  cPR.data.datasets[0].data   = h.precision.map(v => +(v*100).toFixed(2));
+  cPR.data.datasets[1].data   = h.recall.map(v    => +(v*100).toFixed(2));
+  cF1.data.datasets[0].data   = h.f1.map(v        => +(v*100).toFixed(2));
+  cF1.data.datasets[1].data   = h.lr;
+
+  cResources.data.datasets[0].data = h.cpu_usage || [];
+  cResources.data.datasets[1].data = h.gpu_usage || [];
+  cResources.data.datasets[2].data = h.ram_usage || [];
+
+  [cLoss, cAcc, cPR, cF1, cResources].forEach(c => c.update('none'));
+}
+
+// ─── Terminal helpers ─────────────────────────────────────────────────────────
+const terminal = document.getElementById('terminal-body');
+let   logOffset = 0;
+
+const TAG_CLASS = { EPOCH:'tl-epoch', INFO:'tl-info', SUCCESS:'tl-success', WARN:'tl-warn', ERROR:'tl-error' };
+
+function appendLogs(logs, autoScroll = true) {
+  if (!logs.length) return;
+  const frag = document.createDocumentFragment();
+  logs.forEach(l => {
+    const cls = TAG_CLASS[l.tag] || 'tl-info';
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = l.msg;
+    frag.appendChild(span);
+    frag.appendChild(document.createElement('br'));
+  });
+  terminal.appendChild(frag);
+  if (autoScroll) terminal.scrollTop = terminal.scrollHeight;
+}
+
+function escHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Status UI ────────────────────────────────────────────────────────────────
+function setStatusChip(status) {
+  const map = {
+    idle:    ['status-idle',    '● Idle'],
+    running: ['status-running pulse-run', '⚡ Running'],
+    done:    ['status-done',    '✔ Done'],
+    stopped: ['status-stopped', '■ Stopped'],
+    error:   ['status-error',   '✖ Error'],
+  };
+  const [cls, txt] = map[status] || map.idle;
+  document.getElementById('sp-status').innerHTML = `<span class="status-chip ${cls}">${txt}</span>`;
+}
+
+function updateTopBar(state) {
+  setStatusChip(state.status);
+  const ep = state.epoch, tot = state.total_epochs;
+  document.getElementById('sp-epoch').textContent = ep && tot ? `${ep} / ${tot}` : '—';
+  document.getElementById('sp-device').textContent = state.device || 'CPU';
+  const bvl = state.best_val_loss;
+  document.getElementById('sp-best-loss').textContent = bvl && isFinite(bvl) ? bvl.toFixed(5) : '—';
+  const eta = state.eta;
+  document.getElementById('sp-eta').textContent = eta ? `ETA: ${fmtTime(eta)}` : '';
+  // progress bar
+  const pct = tot ? (ep / tot * 100) : 0;
+  document.getElementById('ep-progress-fill').style.width = pct + '%';
+  document.getElementById('ep-progress-label').textContent = tot ? `${ep} / ${tot} epochs` : '0 / 0';
+}
+
+function fmtTime(s) {
+  if (s < 60) return `${Math.round(s)}s`;
+  const m = Math.floor(s/60), sec = Math.round(s%60);
+  return `${m}m ${sec}s`;
+}
+
+// ─── Polling ──────────────────────────────────────────────────────────────────
+let pollTimer = null;
+
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(poll, 1200);
+}
+
+function stopPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+}
+
+async function poll() {
+  try {
+    const res  = await fetch(`/api/train/status?since=${logOffset}`);
+    const data = await res.json();
+    logOffset = data.log_offset || logOffset;
+    appendLogs(data.logs || []);
+    updateTopBar(data);
+    
+    // Live console progress bar and validation samples updates
+    updateTerminalProgress(data.progress_bar);
+    updateValSamples(data.val_samples);
+
+    if (data.history) updateCharts(data.history);
+
+    const done = ['done','stopped','error'].includes(data.status);
+    if (done) {
+      stopPolling();
+      // Clear progress bar when finished
+      updateTerminalProgress(null);
+      document.getElementById('btn-start-train').disabled = false;
+      document.getElementById('btn-stop-train').disabled  = true;
+      if (data.model_path) {
+        document.getElementById('btn-download-model').disabled = false;
+      }
+      // Show error in terminal if training crashed
+      if (data.status === 'error' && data.error) {
+        const errSpan = document.createElement('span');
+        errSpan.className = 'tl-error';
+        errSpan.textContent = '⚠ Training failed: ' + data.error;
+        terminal.appendChild(errSpan);
+        terminal.appendChild(document.createElement('br'));
+        terminal.scrollTop = terminal.scrollHeight;
+      }
+    }
+  } catch(e) {
+    console.error('Poll error', e);
+  }
+}
+
+// ─── Start training ───────────────────────────────────────────────────────────
+document.getElementById('dataset-file').addEventListener('change', function() {
+  const f = this.files[0];
+  const zone = document.getElementById('dataset-zone');
+  const nameEl = document.getElementById('dataset-name');
+  if (f) {
+    zone.classList.remove('has-project-ds');
+    nameEl.textContent = f.name;
+    nameEl.style.color = 'var(--accent)';
+  } else {
+    if (hasProjectDataset && window.projectDatasetName) {
+      zone.classList.add('has-project-ds');
+      nameEl.innerHTML = `
+        <div style="color: var(--accent); font-weight: 600; margin-top: 6px;">
+          <i class="fa-solid fa-check-double"></i> Using Project Dataset: ${escapeHtml(window.projectDatasetName)}
+        </div>
+        <div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;">
+          (${window.projectDatasetSamples} images, ${window.projectDatasetClasses} classes)
+        </div>
+      `;
+    } else {
+      nameEl.textContent = '';
+    }
+  }
+});
+
+document.getElementById('btn-start-train').addEventListener('click', async () => {
+  sessionTimestamp = Date.now();
+  const file = document.getElementById('dataset-file').files[0];
+  if (!file && !hasProjectDataset) { customAlert('Please upload a dataset .zip file first.', 'warning', 'No Dataset'); return; }
+
+  let rawData = null;
+  if (activeVersionId) {
+    if (!loadedVersionGraph) {
+      customAlert('Model graph is still loading or failed to load. Please wait or reload.', 'warning', 'Loading Model');
+      return;
+    }
+    rawData = loadedVersionGraph;
+  } else {
+    // Read graph from editor's autosave (LiteGraph format) and convert to backend format
+    const rawSaved = localStorage.getItem('hexforge-autosave');
+    if (!rawSaved) {
+      customAlert('No model graph found. Build your model in the Node Editor first, then come back to train.', 'warning', 'No Model');
+      return;
+    }
+    try {
+      rawData = JSON.parse(rawSaved);
+    } catch(e) {
+      customAlert('Could not parse saved graph: ' + e.message, 'error', 'Parse Error');
+      return;
+    }
+  }
+
+  let graph = [];
+  try {
+    const nodes = rawData.nodes || [];
+    const links = rawData.links || [];
+    // Build linkId → targetNodeId map
+    const linkMap = {};
+    links.forEach(link => { linkMap[link[0]] = link[3]; });
+    // Convert to backend format
+    graph = nodes.map(n => {
+      const children = [];
+      if (n.outputs) {
+        n.outputs.forEach(opt => {
+          if (opt.links) opt.links.forEach(lid => { if (linkMap[lid]) children.push(linkMap[lid]); });
+        });
+      }
+      return { id: n.id, type: (n.type || '').replace('pytorch/', ''), properties: n.properties || {}, children };
+    });
+  } catch(e) {
+    customAlert('Could not parse graph structure: ' + e.message, 'error', 'Parse Error');
+    return;
+  }
+  if (!graph.length) {
+    customAlert('No model graph found. Build your model in the Node Editor first.', 'warning', 'No Model');
+    return;
+  }
+
+  const fd = new FormData();
+  if (activeVersionId) {
+    fd.append('version_id', activeVersionId);
+  }
+  if (file) {
+    fd.append('dataset',      file);
+  }
+  fd.append('graph',        JSON.stringify(graph));
+  fd.append('epochs',       document.getElementById('cfg-epochs').value);
+  fd.append('batch_size',   document.getElementById('cfg-batch-size').value);
+  fd.append('lr',           document.getElementById('cfg-lr').value);
+  fd.append('weight_decay', document.getElementById('cfg-wd').value);
+  fd.append('momentum',     document.getElementById('cfg-momentum').value);
+  fd.append('grad_clip',    document.getElementById('cfg-clip').value);
+  fd.append('val_split',    ((100 - parseInt(document.getElementById('cfg-val-split').value)) / 100).toFixed(2));
+  fd.append('optimizer',    document.getElementById('cfg-optimizer').value);
+  fd.append('loss',         document.getElementById('cfg-loss').value);
+  fd.append('scheduler',    document.getElementById('cfg-scheduler').value);
+  fd.append('augment',      document.getElementById('cfg-augment').checked ? 'true' : 'false');
+
+  // Clear terminal & charts for a fresh training run
+  terminal.innerHTML = '';
+  logOffset = 0;
+  [cLoss, cAcc, cPR, cF1].forEach(c => {
+    c.data.labels = [];
+    c.data.datasets.forEach(d => d.data = []);
+    c.update('none');
+  });
+  // Reset top bar
+  updateTopBar({ status: 'running', epoch: 0, total_epochs: 0, device: 'CPU', best_val_loss: null, eta: 0 });
+
+  document.getElementById('btn-start-train').disabled  = true;
+  document.getElementById('btn-stop-train').disabled   = false;
+  document.getElementById('btn-download-model').disabled = true;
+  setStatusChip('running');
+
+  try {
+    const res  = await fetch('/api/train/start', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.status !== 'success') {
+      customAlert(data.message || 'Failed to start training.', 'error', 'Error');
+      document.getElementById('btn-start-train').disabled = false;
+      document.getElementById('btn-stop-train').disabled  = true;
+      setStatusChip('error');
+      return;
+    }
+    startPolling();
+  } catch(e) {
+    customAlert(String(e), 'error', 'Network Error');
+    document.getElementById('btn-start-train').disabled = false;
+    setStatusChip('error');
+  }
+});
+
+// ─── Stop ─────────────────────────────────────────────────────────────────────
+document.getElementById('btn-stop-train').addEventListener('click', async () => {
+  await fetch('/api/train/stop', { method: 'POST' });
+  document.getElementById('btn-stop-train').disabled = true;
+});
+
+// ─── Download ─────────────────────────────────────────────────────────────────
+document.getElementById('btn-download-model').addEventListener('click', () => {
+  window.location.href = '/api/train/download';
+});
+</script>
+{% endblock %}

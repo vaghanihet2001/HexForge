@@ -1,0 +1,737 @@
+{% extends 'base.html' %}
+
+{% block title %}Test Ground - HEXForge{% endblock %}
+
+{% block extra_head %}
+<style>
+    .playground-container {
+        max-width: 1200px;
+        margin: 40px auto;
+        padding: 0 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+    }
+
+    .playground-grid {
+        display: grid;
+        grid-template-columns: 1fr 1.2fr;
+        gap: 32px;
+        align-items: start;
+    }
+
+    @media (max-width: 900px) {
+        .playground-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* Configuration Card */
+    .config-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        padding: 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .config-card h2 {
+        font-size: 18px;
+        font-weight: 700;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-primary);
+    }
+
+    .selection-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .form-group label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+    }
+
+    .form-group select {
+        padding: 9px 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-size: 13px;
+        outline: none;
+        cursor: pointer;
+        transition: var(--transition);
+    }
+
+    .form-group select:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+
+    /* Interactive Dropzone */
+    .dropzone-container {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .image-dropzone {
+        border: 2px dashed var(--border-default);
+        border-radius: var(--radius-md);
+        padding: 40px 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: var(--transition);
+        position: relative;
+        background: var(--bg-card);
+        min-height: 220px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+    }
+
+    .image-dropzone:hover {
+        border-color: var(--accent);
+        background: var(--accent-light);
+    }
+
+    .image-dropzone input[type="file"] {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+        z-index: 2;
+    }
+
+    .dropzone-icon {
+        font-size: 36px;
+        color: var(--text-muted);
+        transition: var(--transition);
+    }
+
+    .image-dropzone:hover .dropzone-icon {
+        color: var(--accent);
+        transform: translateY(-2px);
+    }
+
+    .dropzone-text {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin: 0;
+    }
+
+    .dropzone-hint {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin: 0;
+    }
+
+    /* Preview Image */
+    .preview-wrapper {
+        position: relative;
+        width: 100%;
+        max-height: 250px;
+        display: none;
+        border-radius: var(--radius-sm);
+        overflow: hidden;
+        border: 1px solid var(--border-subtle);
+    }
+
+    .preview-img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        max-height: 250px;
+        background: rgba(0,0,0,0.2);
+    }
+
+    .btn-clear-preview {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: rgba(4,6,15,0.7);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: var(--transition);
+        z-index: 3;
+    }
+
+    .btn-clear-preview:hover {
+        background: var(--red);
+        transform: scale(1.05);
+    }
+
+    /* Results Card */
+    .results-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        padding: 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        min-height: 480px;
+        box-shadow: var(--shadow-sm);
+        position: relative;
+    }
+
+    .results-placeholder {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-muted);
+        text-align: center;
+        gap: 16px;
+    }
+
+    .results-placeholder i {
+        font-size: 64px;
+        color: var(--border-default);
+    }
+
+    .results-content {
+        display: none;
+        flex-direction: column;
+        gap: 24px;
+        animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .prediction-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 8px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .prediction-title {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        font-weight: 700;
+        color: var(--text-muted);
+    }
+
+    .prediction-value {
+        font-size: 32px;
+        font-weight: 800;
+        background: linear-gradient(135deg, #fff 40%, var(--accent));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        word-break: break-all;
+    }
+
+    .prediction-confidence {
+        font-size: 16px;
+        font-family: var(--font-mono);
+        font-weight: 700;
+        color: var(--green);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* Horizontal Bar Chart Custom Styles */
+    .chart-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .chart-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .chart-container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .chart-row {
+        display: grid;
+        grid-template-columns: 100px 1fr 60px;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .chart-label {
+        font-size: 12px;
+        color: var(--text-primary);
+        font-weight: 500;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    .chart-bar-outer {
+        height: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border-subtle);
+        border-radius: 6px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .chart-bar-inner {
+        height: 100%;
+        border-radius: 6px;
+        background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 0 6px var(--accent-glow);
+    }
+
+    .chart-row:first-of-type .chart-bar-inner {
+        background: linear-gradient(90deg, var(--green), #34d399);
+        box-shadow: 0 0 6px rgba(16, 185, 129, 0.3);
+    }
+
+    .chart-value {
+        font-size: 12px;
+        font-family: var(--font-mono);
+        font-weight: 600;
+        text-align: right;
+        color: var(--text-secondary);
+    }
+
+    .chart-row:first-of-type .chart-value {
+        color: var(--green);
+        font-weight: 700;
+    }
+
+    /* Glassmorphism Loading State */
+    .loading-glass {
+        position: absolute;
+        inset: 0;
+        background: rgba(18, 18, 18, 0.7);
+        backdrop-filter: blur(4px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 12px;
+        border-radius: var(--radius-lg);
+        z-index: 10;
+    }
+
+    .loading-glass i {
+        font-size: 32px;
+        color: var(--accent);
+    }
+
+    .loading-glass span {
+        font-size: 13px;
+        color: var(--text-primary);
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="playground-container">
+    <div class="page-header">
+        <h1>Model Test Ground</h1>
+        <p>Upload files or images to run instant local inference on custom neural network checkpoints.</p>
+    </div>
+
+    <div class="playground-grid">
+        <!-- Configuration & Input Column -->
+        <div class="config-card">
+            <h2><i class="fa-solid fa-gears" style="color: var(--accent);"></i> Configure Inference</h2>
+            
+            <div class="selection-grid">
+                <div class="form-group">
+                    <label for="project-select">Project</label>
+                    <select id="project-select">
+                        <option value="">Choose Project...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="version-select">Trained Version</label>
+                    <select id="version-select" disabled>
+                        <option value="">Choose Version...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="dropzone-container">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Test Image Upload</label>
+                
+                <!-- Dropzone Area -->
+                <div class="image-dropzone" id="dropzone">
+                    <input type="file" id="image-file" accept="image/*">
+                    <i class="fa-solid fa-cloud-arrow-up dropzone-icon"></i>
+                    <p class="dropzone-text">Drag and drop image here or click to browse</p>
+                    <p class="dropzone-hint">Supports PNG, JPG, JPEG, BMP</p>
+                </div>
+
+                <!-- Preview Area -->
+                <div class="preview-wrapper" id="preview-wrapper">
+                    <button class="btn-clear-preview" id="btn-clear" title="Clear Image">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                    <img src="" id="image-preview" class="preview-img" alt="Test Upload Preview">
+                </div>
+            </div>
+
+            <button class="btn btn-primary btn-full" id="btn-run" disabled>
+                <i class="fa-solid fa-play"></i> Run Inference
+            </button>
+        </div>
+
+        <!-- Output Column -->
+        <div class="results-card">
+            <!-- Loading Indicator -->
+            <div class="loading-glass" id="loading-indicator">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                <span>Processing model forward pass...</span>
+            </div>
+
+            <!-- Placeholder -->
+            <div class="results-placeholder" id="results-placeholder">
+                <i class="fa-solid fa-square-poll-vertical"></i>
+                <h3>Inference Results</h3>
+                <p>Select a trained version, upload an image, and click "Run Inference" to view predictions and probability breakdowns.</p>
+            </div>
+
+            <!-- Results Data -->
+            <div class="results-content" id="results-content">
+                <div class="prediction-header">
+                    <span class="prediction-title">Top Prediction</span>
+                    <span class="prediction-value" id="prediction-label">Label Name</span>
+                    <span class="prediction-confidence" id="prediction-conf">
+                        <i class="fa-solid fa-chart-line"></i> 0.00%
+                    </span>
+                </div>
+
+                <div class="chart-section">
+                    <span class="chart-title">Class Distribution</span>
+                    <div class="chart-container" id="chart-container">
+                        <!-- Populated dynamically via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        let projects = [];
+        let selectedProjectId = null;
+        let selectedVersionId = null;
+        let selectedFile = null;
+
+        // Parse search params for auto-select
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlVersionId = urlParams.get('version_id');
+
+        // DOM elements
+        const projectSelect = document.getElementById('project-select');
+        const versionSelect = document.getElementById('version-select');
+        
+        const fileInput = document.getElementById('image-file');
+        const dropzone = document.getElementById('dropzone');
+        const previewWrapper = document.getElementById('preview-wrapper');
+        const previewImg = document.getElementById('image-preview');
+        const btnClear = document.getElementById('btn-clear');
+        
+        const btnRun = document.getElementById('btn-run');
+        const resultsPlaceholder = document.getElementById('results-placeholder');
+        const resultsContent = document.getElementById('results-content');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        
+        const predictionLabel = document.getElementById('prediction-label');
+        const predictionConf = document.getElementById('prediction-conf');
+        const chartContainer = document.getElementById('chart-container');
+
+        // Load initially
+        loadProjectsFlow();
+
+        // Project selection change
+        projectSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            selectedProjectId = val || null;
+            selectedVersionId = null;
+            versionSelect.innerHTML = '<option value="">Choose Version...</option>';
+            versionSelect.disabled = true;
+            validateRunButton();
+
+            if (selectedProjectId) {
+                loadVersions(selectedProjectId);
+            }
+        });
+
+        // Version selection change
+        versionSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            selectedVersionId = val || null;
+            validateRunButton();
+        });
+
+        // File Selection preview handling
+        fileInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (files && files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        btnClear.addEventListener('click', () => {
+            clearFile();
+        });
+
+        // Run Inference
+        btnRun.addEventListener('click', async () => {
+            if (!selectedVersionId || !selectedFile) return;
+
+            // Show Loading
+            loadingIndicator.style.display = 'flex';
+            resultsPlaceholder.style.display = 'none';
+            resultsContent.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('version_id', selectedVersionId);
+            formData.append('image', selectedFile);
+
+            try {
+                const res = await fetch('/api/playground/test', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    renderInferenceResults(data);
+                } else {
+                    window.customAlert(data.message, 'error', 'Inference Failed');
+                    resultsPlaceholder.style.display = 'flex';
+                }
+            } catch (err) {
+                window.customAlert('Inference request failed: ' + err.message, 'error', 'Error');
+                resultsPlaceholder.style.display = 'flex';
+            } finally {
+                loadingIndicator.style.display = 'none';
+            }
+        });
+
+        // Drag & Drop event handlers
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropzone.style.borderColor = 'var(--accent)';
+                dropzone.style.background = 'var(--accent-light)';
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropzone.style.borderColor = '';
+                dropzone.style.background = '';
+            }, false);
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files && files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        // Handle Project Loading
+        async function loadProjectsFlow() {
+            try {
+                const res = await fetch('/api/projects');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    projects = data.projects;
+                    projectSelect.innerHTML = '<option value="">Choose Project...</option>';
+                    projects.forEach(p => {
+                        projectSelect.innerHTML += `<option value="${p._id}">${escapeHtml(p.name)}</option>`;
+                    });
+
+                    // Check if we have an auto-select target version
+                    if (urlVersionId) {
+                        await autoSelectVersion(urlVersionId);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load projects list", err);
+            }
+        }
+
+        // Load project versions and filter for trained ones
+        async function loadVersions(projectId, targetVersionId = null) {
+            try {
+                const res = await fetch(`/api/projects/${projectId}`);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const trainedVersions = data.versions.filter(v => v.status === 'trained');
+                    
+                    versionSelect.innerHTML = '<option value="">Choose Version...</option>';
+                    if (trainedVersions.length === 0) {
+                        versionSelect.innerHTML = '<option value="">No trained versions available</option>';
+                        versionSelect.disabled = true;
+                        return;
+                    }
+
+                    trainedVersions.forEach(v => {
+                        const isSelected = v._id === targetVersionId ? 'selected' : '';
+                        versionSelect.innerHTML += `<option value="${v._id}" ${isSelected}>${escapeHtml(v.version_name)}</option>`;
+                    });
+                    
+                    versionSelect.disabled = false;
+                    
+                    if (targetVersionId) {
+                        selectedVersionId = targetVersionId;
+                        validateRunButton();
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load versions list", err);
+            }
+        }
+
+        // Auto-select a version by fetching its project first
+        async function autoSelectVersion(versionId) {
+            try {
+                const res = await fetch(`/api/versions/${versionId}`);
+                const data = await res.json();
+                if (data.status === 'success' && data.version) {
+                    const v = data.version;
+                    
+                    // Set project selection
+                    projectSelect.value = v.project_id;
+                    selectedProjectId = v.project_id;
+                    
+                    // Load and select version
+                    await loadVersions(v.project_id, v._id);
+                }
+            } catch (err) {
+                console.error("Error auto-selecting version", err);
+            }
+        }
+
+        // Handle selected file details
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                window.customAlert('Please select a valid image file.', 'error', 'Invalid File');
+                return;
+            }
+
+            selectedFile = file;
+            
+            // Read image and render preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImg.src = e.target.result;
+                dropzone.style.display = 'none';
+                previewWrapper.style.display = 'block';
+                validateRunButton();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearFile() {
+            selectedFile = null;
+            fileInput.value = '';
+            previewImg.src = '';
+            previewWrapper.style.display = 'none';
+            dropzone.style.display = 'flex';
+            validateRunButton();
+        }
+
+        // Check if run button should be enabled
+        function validateRunButton() {
+            if (selectedVersionId && selectedFile) {
+                btnRun.removeAttribute('disabled');
+            } else {
+                btnRun.setAttribute('disabled', 'true');
+            }
+        }
+
+        // Render predicted outputs and bar distributions
+        function renderInferenceResults(data) {
+            predictionLabel.textContent = data.prediction;
+            predictionConf.innerHTML = `<i class="fa-solid fa-chart-line"></i> ${data.confidence.toFixed(2)}% Confidence`;
+
+            chartContainer.innerHTML = '';
+            const allPreds = data.all_predictions || [];
+
+            if (allPreds.length === 0) {
+                chartContainer.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">No probability distribution available.</div>';
+            } else {
+                allPreds.forEach(item => {
+                    chartContainer.innerHTML += `
+                        <div class="chart-row">
+                            <span class="chart-label" title="${escapeHtml(item.class)}">${escapeHtml(item.class)}</span>
+                            <div class="chart-bar-outer">
+                                <div class="chart-bar-inner" style="width: ${item.confidence}%;"></div>
+                            </div>
+                            <span class="chart-value">${item.confidence.toFixed(2)}%</span>
+                        </div>
+                    `;
+                });
+            }
+
+            resultsContent.style.display = 'flex';
+        }
+
+        // Helper to escape HTML characters (to prevent XSS)
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    });
+</script>
+{% endblock %}

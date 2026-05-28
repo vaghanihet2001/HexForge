@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Node Editor — HEXForge{% endblock %}
+<!-- {% block title %}Node Editor — HEXForge{% endblock %} -->
 
 {% block extra_head %}
 <style>.page-content{overflow:hidden;display:flex;flex-direction:column;}</style>
@@ -74,20 +74,20 @@
   <!-- ONNX dropdown -->
   <div class="tb-dropdown-wrap" id="tb-onnx-wrap">
     <button class="tb-menu-btn" id="tb-onnx-btn">
-      <i class="fa-solid fa-eye"></i> ONNX
+      <i class="fa-solid fa-cloud-arrow-down"></i> Import Model
       <i class="fa-solid fa-chevron-down tb-caret"></i>
     </button>
     <div class="tb-dropdown" id="tb-onnx-menu">
-      <div class="tb-drop-header">Import</div>
+      <div class="tb-drop-header">Import Model</div>
       <label class="tb-drop-item" style="cursor:pointer;">
-        <i class="fa-solid fa-upload"></i> Load .onnx File
-        <input type="file" id="onnx-upload" accept=".onnx" style="display:none;">
+        <i class="fa-solid fa-upload"></i> Load Model file
+        <input type="file" id="onnx-upload" accept=".onnx,.pt,.pth" style="display:none;">
       </label>
       <span id="onnx-filename" style="font-size:11px;color:var(--accent);padding:0 14px;display:none;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
       <button class="tb-drop-item" id="btn-inspect-onnx" disabled>
-        <i class="fa-solid fa-magnifying-glass"></i> Inspect ONNX Model
+        <i class="fa-solid fa-magnifying-glass"></i> Inspect Model Info
       </button>
-      <button class="tb-drop-item" id="btn-onnx-load-canvas" disabled>
+      <button class="tb-drop-item" id="btn-onnx-load-canvas-menu" disabled>
         <i class="fa-solid fa-diagram-project"></i> Load to Canvas
       </button>
     </div>
@@ -112,6 +112,9 @@
 
   <!-- Autosave indicator (right side) -->
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+    <span id="project-version-badge" style="font-size:11.5px;font-weight:600;color:var(--accent);display:none;background:var(--accent-light);padding:4px 10px;border-radius:var(--radius-sm);border:1px solid rgba(51,204,255,0.25);margin-right:12px;align-items:center;gap:6px;">
+      <i class="fa-solid fa-folder-open"></i> <span id="badge-proj-name"></span> &middot; <span id="badge-ver-name"></span>
+    </span>
     <span id="autosave-indicator" style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:5px;">
       <i class="fa-solid fa-circle-check" style="color:var(--green);font-size:10px;"></i> Autosaved
     </span>
@@ -132,7 +135,7 @@
   <aside class="editor-sidebar">
     <div class="sidebar-search-wrap">
       <div class="search-wrap-inner">
-        <span class="si">🔍</span>
+        <span class="si"><i class="fa-solid fa-magnifying-glass"></i></span>
         <input type="text" id="node-search" class="sidebar-search" placeholder="Search operators...">
       </div>
     </div>
@@ -249,6 +252,80 @@
     </div>
   </div>
 
+  <!-- DEDICATED PROFILING PANEL (RIGHT SIDE) -->
+  <div class="node-properties-panel hidden" id="profiling-panel" style="z-index: 55;">
+    <div class="npp-header">
+      <h3>⚡ Performance Profiler</h3>
+      <button class="npp-close" id="profiling-close" title="Close">✕</button>
+    </div>
+    <div class="npp-body" style="display:flex; flex-direction:column; gap:16px;">
+      <p style="font-size:12px; color:var(--text-muted); margin:0;">
+        Runs the model forward pass multiple times layer-by-layer to measure average latency.
+      </p>
+      
+      <div class="npp-field">
+        <label>Profiling Iterations</label>
+        <input type="number" id="profiling-iterations" value="100" min="1" max="1000" step="1">
+      </div>
+      
+      <button id="btn-run-profile" class="btn btn-primary btn-full">
+        <i class="fa-solid fa-play"></i> Start Profiling
+      </button>
+
+      <div id="profiling-summary" style="display:none; background:var(--bg-elevated); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:12px; display:flex; flex-direction:column; gap:10px;">
+        <h4 style="margin:0; font-size:11px; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.5px;">Summary Metrics</h4>
+        <div style="display:flex; justify-content:space-between; font-size:12.5px;">
+          <span style="color:var(--text-secondary);">Total Avg Latency:</span>
+          <strong id="prof-summary-latency" style="font-family:var(--font-mono); color:var(--accent);">0.00 ms</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:12.5px;">
+          <span style="color:var(--text-secondary);">Layers Profiled:</span>
+          <strong id="prof-summary-layers">0</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:12.5px;">
+          <span style="color:var(--text-secondary);">Status:</span>
+          <strong id="prof-summary-status" style="color:var(--green);">Ready</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROFILING BREAKDOWN BOTTOM PANEL -->
+  <div class="profiling-bottom-panel" id="profiling-bottom-panel">
+    <div class="bottom-panel-header" style="display:flex; align-items:center; justify-content:space-between; padding:8px 16px; border-bottom:1px solid var(--border-subtle); flex-shrink:0; background:var(--bg-surface);">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:12px; color:var(--accent);"><i class="fa-solid fa-table"></i></span>
+        <span style="font-size:12px; font-weight:700; color:var(--text-primary);">Profiling Breakdown Table</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button class="btn btn-ghost btn-sm btn-icon" id="btn-bottom-panel-toggle" title="Collapse/Expand" style="padding:4px 8px; font-size:11px;">
+          <i class="fa-solid fa-chevron-down" id="bottom-panel-toggle-icon"></i>
+        </button>
+        <button class="npp-close" id="btn-bottom-panel-close" title="Close" style="font-size:14px; padding:2px;">✕</button>
+      </div>
+    </div>
+    <div class="bottom-panel-body" style="flex:1; overflow-y:auto; padding:12px 16px; background:var(--bg-base);">
+      <div class="bottom-panel-table-container">
+        <table class="profiling-table">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border-subtle); color:var(--text-muted); font-size:11.5px; text-transform:uppercase; letter-spacing:0.5px; text-align:left;">
+              <th style="padding:8px 12px; font-weight:600;">Node Name</th>
+              <th style="padding:8px 12px; font-weight:600;">Node Type</th>
+              <th style="padding:8px 12px; font-weight:600;">Avg Process Time</th>
+              <th style="padding:8px 12px; font-weight:600;">Input Shape</th>
+              <th style="padding:8px 12px; font-weight:600;">Output Shape</th>
+            </tr>
+          </thead>
+          <tbody id="profiling-table-body">
+            <tr>
+              <td colspan="5" style="text-align:center; padding:24px; color:var(--text-muted);">No profiling data. Run profiler to populate.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- EVALUATION MODAL -->
@@ -263,7 +340,7 @@
 <!-- ONNX INSPECTOR MODAL -->
 <div class="result-overlay" id="onnx-overlay">
   <div class="result-card" style="width:580px;max-width:95vw;">
-    <h3>🔍 ONNX Model Inspector</h3>
+    <h3><i class="fa-solid fa-magnifying-glass"></i> Model Inspector</h3>
     <div class="onnx-meta-grid" id="onnx-meta-grid"></div>
     <div class="onnx-io-header">Model Inputs</div>
     <div id="onnx-inputs-list" style="margin-bottom:8px;"></div>
@@ -272,7 +349,7 @@
     <input type="text" id="onnx-search" class="onnx-search-box" placeholder="Search nodes by name or op type...">
     <div class="onnx-nodes-container" id="onnx-nodes-list"></div>
     <div style="margin-top:18px;display:flex;gap:10px;">
-      <button id="btn-onnx-load-canvas" class="btn btn-primary" style="flex:2;">🎨 Load to Canvas</button>
+      <button id="btn-onnx-load-canvas" class="btn btn-primary" style="flex:2;"><i class="fa-solid fa-diagram-project"></i> Load to Canvas</button>
       <button class="btn btn-ghost" style="flex:1;" onclick="document.getElementById('onnx-overlay').classList.remove('visible')">Close</button>
     </div>
   </div>
@@ -287,8 +364,19 @@
 // Dataset upload label
 document.getElementById('dataset-upload').addEventListener('change', function(){
   const el=document.getElementById('upload-filename');
-  if(this.files.length){el.textContent=this.files[0].name;el.style.display='inline';}
-  else{el.style.display='none';}
+  if(this.files.length){
+    el.textContent=this.files[0].name;
+    el.style.display='block';
+    el.style.color='var(--accent)';
+  } else {
+    if (window.hasProjectDataset && window.projectDataset) {
+      el.textContent=`Using Project Dataset: ${window.projectDataset.filename}`;
+      el.style.display='block';
+      el.style.color='var(--green)';
+    } else {
+      el.style.display='none';
+    }
+  }
 });
 
 // ONNX upload label

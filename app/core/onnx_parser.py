@@ -1,10 +1,11 @@
 import onnx
-from onnx import shape_inference
+from onnx import shape_inference, numpy_helper
 
 def parse_onnx_model(file_path):
     """
     Loads and parses an ONNX model, extracting metadata, inputs, outputs,
-    and detailed node descriptions including attributes and output shapes.
+    and detailed node descriptions including attributes, outputs, weights,
+    biases, and constants directly associated with their consumer nodes.
     """
     model = onnx.load(file_path)
     
@@ -19,6 +20,31 @@ def parse_onnx_model(file_path):
     # Identify model weights (initializers) to differentiate from actual inputs
     initializer_names = {init.name for init in graph.initializer}
     
+    # Extract all initializers
+    initializers = {}
+    for init in graph.initializer:
+        try:
+            tensor = numpy_helper.to_array(init)
+            initializers[init.name] = tensor.tolist()
+        except Exception as e:
+            initializers[init.name] = f"<Error parsing initializer: {e}>"
+
+    # Extract all Constant node values and map them
+    for node in graph.node:
+        if node.op_type == "Constant":
+            out_name = node.output[0] if node.output else None
+            if out_name:
+                for attr in node.attribute:
+                    if attr.name == "value":
+                        try:
+                            tensor = numpy_helper.to_array(attr.t)
+                            initializers[out_name] = tensor.tolist()
+                        except Exception as e:
+                            try:
+                                initializers[out_name] = attr.floats or attr.ints or attr.strings or str(attr)
+                            except Exception:
+                                initializers[out_name] = f"<Error parsing constant: {e}>"
+
     # Helper to extract shape from ValueInfoProto
     def get_tensor_shape(value_info):
         tensor_type = value_info.type.tensor_type
@@ -71,6 +97,10 @@ def parse_onnx_model(file_path):
     # Extract nodes
     nodes = []
     for i, node in enumerate(graph.node):
+        # Skip Constant nodes from being rendered as separate nodes in playground
+        if node.op_type == "Constant":
+            continue
+
         # Extract attributes
         attrs = {}
         for attr in node.attribute:
@@ -88,7 +118,6 @@ def parse_onnx_model(file_path):
             elif attr.strings:
                 val = [s.decode('utf-8', errors='ignore') if isinstance(s, bytes) else s for s in attr.strings]
             elif attr.HasField('t'):
-                from onnx import numpy_helper
                 try:
                     tensor = attr.t
                     total_elements = 1
@@ -99,10 +128,19 @@ def parse_onnx_model(file_path):
                         val = ndarray.tolist()
                     else:
                         val = f"<Tensor shape={list(tensor.dims)}>"
-                except Exception as ex:
+                except Exception:
                     val = f"<Tensor shape={list(attr.t.dims)}>"
             attrs[attr.name] = val
             
+        # Separate constants/weights from active connection inputs
+        node_constants = {}
+        active_inputs = []
+        for inp_name in node.input:
+            if inp_name in initializers:
+                node_constants[inp_name] = initializers[inp_name]
+            else:
+                active_inputs.append(inp_name)
+
         # Get output shapes for this node's outputs
         node_output_shapes = {}
         for out_name in node.output:
@@ -115,9 +153,10 @@ def parse_onnx_model(file_path):
         nodes.append({
             "name": node_name,
             "op_type": node.op_type,
-            "inputs": list(node.input),
+            "inputs": active_inputs,
             "outputs": list(node.output),
             "attributes": attrs,
+            "constants": node_constants,
             "output_shapes": node_output_shapes
         })
         

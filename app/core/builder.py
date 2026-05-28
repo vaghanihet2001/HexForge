@@ -9,8 +9,42 @@ def build_model(graph_data):
     Parses a JSON graph from the frontend and returns:
     (PyTorch nn.Sequential model, input_shape_list, execution_order_nodes)
     """
+    import json
     if not graph_data:
         raise ValueError("Empty graph data")
+
+    if isinstance(graph_data, str):
+        try:
+            graph_data = json.loads(graph_data)
+        except Exception:
+            pass
+
+    if isinstance(graph_data, dict):
+        nodes = graph_data.get("nodes", [])
+        links = graph_data.get("links", [])
+        
+        # Build link_id -> target_node_id map
+        link_map = {}
+        for link in links:
+            if isinstance(link, list) and len(link) >= 4:
+                link_map[link[0]] = link[3]
+                
+        converted_graph = []
+        for n in nodes:
+            children = []
+            if n.get("outputs"):
+                for opt in n["outputs"]:
+                    if opt.get("links"):
+                        for lid in opt["links"]:
+                            if lid in link_map:
+                                children.append(link_map[lid])
+            converted_graph.append({
+                "id": n["id"],
+                "type": (n.get("type") or "").replace("pytorch/", ""),
+                "properties": n.get("properties") or {},
+                "children": children
+            })
+        graph_data = converted_graph
 
     nodes_by_id = {str(node['id']): node for node in graph_data}
 

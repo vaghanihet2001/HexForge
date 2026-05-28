@@ -1,0 +1,1240 @@
+{% extends 'base.html' %}
+
+{% block title %}Projects - HEXForge{% endblock %}
+
+{% block extra_head %}
+<style>
+    .projects-container {
+        display: flex;
+        height: calc(100vh - var(--navbar-h));
+        background: var(--bg-base);
+        overflow: hidden;
+    }
+
+    /* Left Sidebar: Projects List */
+    .projects-sidebar {
+        width: 320px;
+        border-right: 1px solid var(--border-subtle);
+        background: var(--bg-sidebar);
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+    }
+
+    .sidebar-header2 {
+        padding: 20px;
+        width: 100%;
+        border-bottom: 1px solid var(--border-subtle);
+        display: flex;
+        /* gap:20px; */
+        justify-content:space-between;
+        align-items: center;
+    }
+
+    .sidebar-header2 h2 {
+        font-size: 18px;
+        font-weight: 700;
+        margin: 0;
+        color: var(--text-primary);
+        
+        
+    }
+
+    .projects-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .project-item {
+        padding: 16px;
+        border-radius: var(--radius-md);
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        position: relative;
+    }
+
+    .project-item:hover {
+        border-color: var(--border-strong);
+        transform: translateY(-1px);
+    }
+
+    .project-item.active {
+        border-color: var(--accent);
+        background: var(--accent-light);
+        box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    .project-item .proj-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+        padding-right: 24px;
+        word-break: break-all;
+    }
+
+    .project-item .proj-desc {
+        font-size: 12px;
+        color: var(--text-secondary);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+    }
+
+    .project-item .proj-meta {
+        font-size: 11px;
+        color: var(--text-muted);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 4px;
+    }
+
+    .btn-delete-proj {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 13px;
+        transition: var(--transition);
+        padding: 4px;
+        border-radius: 4px;
+    }
+
+    .btn-delete-proj:hover {
+        color: var(--red);
+        background: rgba(255, 107, 107, 0.1);
+    }
+
+    .btn-edit-proj:hover {
+        color: var(--accent);
+        background: var(--accent-light);
+    }
+
+    #btn-edit-project-header:hover {
+        color: var(--accent);
+        background: var(--accent-light);
+    }
+
+    /* Right Pane: Project Details & Versions */
+    .project-details-pane {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: var(--bg-base);
+    }
+
+    .details-placeholder {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-muted);
+        gap: 16px;
+    }
+
+    .details-placeholder i {
+        font-size: 54px;
+        background: linear-gradient(135deg, var(--text-muted), var(--border-default));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: pulse-icon 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-icon {
+        0%, 100% { opacity: 0.6; transform: scale(1); }
+        50% { opacity: 0.9; transform: scale(1.05); }
+    }
+
+    .details-header {
+        padding: 24px;
+        border-bottom: 1px solid var(--border-subtle);
+        background: var(--bg-surface);
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 20px;
+    }
+
+    .details-title-area {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex: 1;
+    }
+
+    .details-title-area h2 {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 0;
+        color: var(--text-primary);
+        word-break: break-all;
+    }
+
+    .details-title-area p {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin: 0;
+        word-break: break-word;
+    }
+
+    .details-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px;
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .section-header h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0;
+        color: var(--text-primary);
+    }
+
+    /* Versions List layout */
+    .versions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 16px;
+    }
+
+    .version-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        transition: var(--transition);
+        position: relative;
+    }
+
+    .version-card:hover {
+        border-color: var(--accent);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .version-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .version-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    /* Status badges */
+    .status-badge {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 3px 8px;
+        border-radius: 20px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .status-badge.untrained {
+        background: rgba(148, 163, 184, 0.15);
+        color: var(--text-secondary);
+    }
+
+    .status-badge.training {
+        background: var(--accent-light);
+        color: var(--accent);
+        animation: pulse-border 1.5s infinite;
+    }
+
+    @keyframes pulse-border {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(51, 204, 255, 0.3); }
+        50% { box-shadow: 0 0 0 4px rgba(51, 204, 255, 0.3); }
+    }
+
+    .status-badge.trained {
+        background: rgba(16, 185, 129, 0.15);
+        color: var(--green);
+    }
+
+    .status-badge.failed {
+        background: rgba(255, 107, 107, 0.15);
+        color: var(--red);
+    }
+
+    .version-metrics {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--border-subtle);
+        padding: 12px;
+        border-radius: var(--radius-sm);
+    }
+
+    .metric-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .metric-label {
+        font-size: 11px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+
+    .metric-val {
+        font-family: var(--font-mono);
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    .metric-val.highlight {
+        color: var(--accent);
+    }
+
+    .version-meta-row {
+        font-size: 12px;
+        color: var(--text-muted);
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .version-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: auto;
+    }
+
+    .btn-action-ver {
+        flex: 1;
+        padding: 7px 10px;
+        font-size: 11.5px;
+        border-radius: var(--radius-sm);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+
+    .btn-delete-ver {
+        background: none;
+        border: 1px solid var(--border-subtle);
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 7px 10px;
+        border-radius: var(--radius-sm);
+        transition: var(--transition);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-delete-ver:hover {
+        color: var(--red);
+        border-color: var(--red);
+        background: rgba(255, 107, 107, 0.05);
+    }
+
+    /* Modal Form Styles */
+    .form-group {
+        margin-bottom: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .form-group label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+    }
+
+    .form-group input, .form-group textarea, .form-group select {
+        padding: 9px 12px;
+        background: var(--bg-base);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-size: 13px;
+        outline: none;
+        transition: var(--transition);
+    }
+
+    .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+
+    /* Dataset & Tabs Styles */
+    .details-tabs {
+        display: flex;
+        gap: 24px;
+        border-bottom: 1px solid var(--border-subtle);
+        padding: 0 24px;
+        background: var(--bg-surface);
+    }
+    
+    .tab-btn {
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: var(--text-muted);
+        font-weight: 600;
+        padding: 14px 4px;
+        font-size: 13.5px;
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .tab-btn:hover {
+        color: var(--text-primary);
+    }
+    
+    .tab-btn.active {
+        border-bottom-color: var(--accent);
+        color: var(--text-primary);
+    }
+    
+    .tab-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    
+    .dataset-upload-zone {
+        border: 2px dashed var(--border-default);
+        border-radius: var(--radius-md);
+        padding: 48px 24px;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.01);
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        max-width: 600px;
+        width: 100%;
+        margin: 20px auto;
+    }
+    
+    .dataset-upload-zone:hover, .dataset-upload-zone.dragover {
+        border-color: var(--accent);
+        background: var(--accent-glow);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="projects-container">
+    <!-- Left Sidebar: Projects -->
+    <div class="projects-sidebar">
+        <div class="sidebar-header2">
+            
+            <h2>Projects</h2>
+            
+            <button class="btn btn-primary btn-sm" id="btn-create-project-modal" title="New Project">
+                <i class="fa-solid fa-plus"></i>  New
+            </button>
+            
+        </div>
+        <div class="projects-list" id="projects-list">
+            <!-- Dynamically populated -->
+            <div style="text-align: center; color: var(--text-muted); margin-top: 32px; font-size: 13px;">
+                <i class="fa-solid fa-spinner fa-spin" style="margin-bottom: 8px; font-size: 18px; color: var(--accent);"></i>
+                <br>Loading projects...
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Content: Selected Project Detail & Versions -->
+    <div class="project-details-pane" id="project-details-pane">
+        <div class="details-placeholder">
+            <i class="fa-solid fa-folder-tree"></i>
+            <p>Select a project from the sidebar or create a new one to get started.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Create Project -->
+<div class="result-overlay" id="create-project-overlay">
+    <div class="result-card" style="width: 460px;">
+        <h3><i class="fa-solid fa-folder-plus" style="color: var(--accent);"></i> Create New Project</h3>
+        <form id="create-project-form">
+            <div class="form-group">
+                <label for="project-name">Project Name <span style="color: var(--red);">*</span></label>
+                <input type="text" id="project-name" required placeholder="e.g., Image Classification Model">
+            </div>
+            <div class="form-group">
+                <label for="project-desc">Description</label>
+                <textarea id="project-desc" rows="3" placeholder="Describe the goal of this custom model project..."></textarea>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+                <button type="button" class="btn btn-ghost" id="btn-close-project-modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Project</button>
+            </div>
+        </form>
+    </div>
+</div>
+<!-- Modal: Edit Project -->
+<div class="result-overlay" id="edit-project-overlay">
+    <div class="result-card" style="width: 460px;">
+        <h3><i class="fa-solid fa-pen-to-square" style="color: var(--accent);"></i> Edit Project Details</h3>
+        <form id="edit-project-form">
+            <input type="hidden" id="edit-project-id">
+            <div class="form-group">
+                <label for="edit-project-name">Project Name <span style="color: var(--red);">*</span></label>
+                <input type="text" id="edit-project-name" required placeholder="e.g., Image Classification Model">
+            </div>
+            <div class="form-group">
+                <label for="edit-project-desc">Description</label>
+                <textarea id="edit-project-desc" rows="3" placeholder="Describe the goal of this custom model project..."></textarea>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+                <button type="button" class="btn btn-ghost" id="btn-close-edit-project-modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Create Version -->
+<div class="result-overlay" id="create-version-overlay">
+    <div class="result-card" style="width: 460px;">
+        <h3><i class="fa-solid fa-code-branch" style="color: var(--accent);"></i> Create New Version</h3>
+        <form id="create-version-form">
+            <div class="form-group">
+                <label for="version-name">Version Name <span style="color: var(--red);">*</span></label>
+                <input type="text" id="version-name" required placeholder="e.g., v2, v1.1, resnet_test">
+            </div>
+            <div class="form-group">
+                <label for="copy-graph-select">Copy Graph / Model Structure From</label>
+                <select id="copy-graph-select">
+                    <!-- Options populated dynamically -->
+                </select>
+                <span style="font-size: 11px; color: var(--text-muted);">
+                    Select an existing version to import its LiteGraph configuration, or choose "Empty Graph" to start fresh.
+                </span>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+                <button type="button" class="btn btn-ghost" id="btn-close-version-modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Version</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        let activeProjectId = null;
+        let projects = [];
+
+        // DOM elements
+        const projectsList = document.getElementById('projects-list');
+        const projectDetailsPane = document.getElementById('project-details-pane');
+        
+        // Modals
+        const createProjectOverlay = document.getElementById('create-project-overlay');
+        const createProjectForm = document.getElementById('create-project-form');
+        const btnCreateProjectModal = document.getElementById('btn-create-project-modal');
+        const btnCloseProjectModal = document.getElementById('btn-close-project-modal');
+
+        const editProjectOverlay = document.getElementById('edit-project-overlay');
+        const editProjectForm = document.getElementById('edit-project-form');
+        const btnCloseEditProjectModal = document.getElementById('btn-close-edit-project-modal');
+        const editProjectIdInput = document.getElementById('edit-project-id');
+        const editProjectNameInput = document.getElementById('edit-project-name');
+        const editProjectDescInput = document.getElementById('edit-project-desc');
+
+        const createVersionOverlay = document.getElementById('create-version-overlay');
+        const createVersionForm = document.getElementById('create-version-form');
+        const btnCloseVersionModal = document.getElementById('btn-close-version-modal');
+        const copyGraphSelect = document.getElementById('copy-graph-select');
+
+        // Initial Load
+        loadProjects();
+
+        // Project Modals Trigger
+        btnCreateProjectModal.addEventListener('click', () => {
+            createProjectForm.reset();
+            createProjectOverlay.style.display = 'flex';
+        });
+
+        btnCloseProjectModal.addEventListener('click', () => {
+            createProjectOverlay.style.display = 'none';
+        });
+
+        createProjectForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('project-name').value.trim();
+            const description = document.getElementById('project-desc').value.trim();
+            
+            try {
+                const res = await fetch('/api/projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    createProjectOverlay.style.display = 'none';
+                    window.customAlert('Project created successfully with default v1 version!', 'success', 'Success');
+                    await loadProjects();
+                    selectProject(data.project_id);
+                } else {
+                    window.customAlert(data.message, 'error', 'Error');
+                }
+            } catch (err) {
+                window.customAlert('Failed to create project: ' + err.message, 'error', 'Error');
+            }
+        });
+
+        // Edit Project Modals Trigger & Action
+        btnCloseEditProjectModal.addEventListener('click', () => {
+            editProjectOverlay.style.display = 'none';
+        });
+
+        editProjectForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = editProjectIdInput.value;
+            const name = editProjectNameInput.value.trim();
+            const description = editProjectDescInput.value.trim();
+            
+            try {
+                const res = await fetch(`/api/projects/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    editProjectOverlay.style.display = 'none';
+                    window.customAlert('Project details updated successfully!', 'success', 'Success');
+                    await loadProjects();
+                    if (activeProjectId === id) {
+                        loadProjectDetails(id);
+                    }
+                } else {
+                    window.customAlert(data.message, 'error', 'Error');
+                }
+            } catch (err) {
+                window.customAlert('Failed to update project: ' + err.message, 'error', 'Error');
+            }
+        });
+
+        // Version Modal Form Cancel
+        btnCloseVersionModal.addEventListener('click', () => {
+            createVersionOverlay.style.display = 'none';
+        });
+
+        createVersionForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const versionName = document.getElementById('version-name').value.trim();
+            const fromVersionId = copyGraphSelect.value || null;
+
+            try {
+                const res = await fetch(`/api/projects/${activeProjectId}/versions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ version_name: versionName, from_version_id: fromVersionId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    createVersionOverlay.style.display = 'none';
+                    window.customAlert(`Version '${versionName}' created successfully!`, 'success', 'Success');
+                    loadProjectDetails(activeProjectId);
+                } else {
+                    window.customAlert(data.message, 'error', 'Error');
+                }
+            } catch (err) {
+                window.customAlert('Failed to create version: ' + err.message, 'error', 'Error');
+            }
+        });
+
+        // Load Projects
+        async function loadProjects() {
+            try {
+                const res = await fetch('/api/projects');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    projects = data.projects;
+                    renderProjectsList();
+                } else {
+                    projectsList.innerHTML = `<div style="color:var(--red); text-align:center; padding: 20px;">${data.message}</div>`;
+                }
+            } catch (err) {
+                projectsList.innerHTML = `<div style="color:var(--red); text-align:center; padding: 20px;">Error: ${err.message}</div>`;
+            }
+        }
+
+        // Render Projects Sidebar List
+        function renderProjectsList() {
+            if (projects.length === 0) {
+                projectsList.innerHTML = `
+                    <div style="text-align: center; color: var(--text-muted); padding: 32px 16px; font-size: 13px;">
+                        <i class="fa-solid fa-folder-closed" style="font-size: 32px; margin-bottom: 12px;"></i>
+                        <p style="margin:0;">No projects found.<br>Create a new project to start!</p>
+                    </div>`;
+                projectDetailsPane.innerHTML = `
+                    <div class="details-placeholder">
+                        <i class="fa-solid fa-folder-tree"></i>
+                        <p>Select a project from the sidebar or create a new one to get started.</p>
+                    </div>`;
+                return;
+            }
+
+            projectsList.innerHTML = '';
+            projects.forEach(p => {
+                const date = new Date(p.created_at).toLocaleDateString(undefined, {
+                    month: 'short', day: 'numeric', year: 'numeric'
+                });
+
+                const item = document.createElement('div');
+                item.className = `project-item ${p._id === activeProjectId ? 'active' : ''}`;
+                item.innerHTML = `
+                    <div class="proj-name">${escapeHtml(p.name)}</div>
+                    <div class="proj-desc">${escapeHtml(p.description || 'No description provided')}</div>
+                    <div class="proj-meta">
+                        <span>Created: ${date}</span>
+                    </div>
+                    <div class="proj-actions" style="position: absolute; top: 12px; right: 12px; display: flex; gap: 4px; align-items: center;">
+                        <button class="btn-edit-proj" data-id="${p._id}" title="Edit Project" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; transition: var(--transition); padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button class="btn-delete-proj" data-id="${p._id}" title="Delete Project" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; transition: var(--transition); padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                `;
+
+                // Card Click Selection
+                item.addEventListener('click', (e) => {
+                    if (e.target.closest('.btn-delete-proj') || e.target.closest('.btn-edit-proj')) return;
+                    selectProject(p._id);
+                });
+
+                // Edit Click Action
+                const editBtn = item.querySelector('.btn-edit-proj');
+                editBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openEditProjectModal(p._id, p.name, p.description);
+                });
+
+                // Trash Click Action
+                const deleteBtn = item.querySelector('.btn-delete-proj');
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    window.customConfirm(
+                        `Are you sure you want to delete project "${escapeHtml(p.name)}"? This will delete ALL versions, model graphs, and saved weights files forever!`,
+                        async () => {
+                            try {
+                                const delRes = await fetch(`/api/projects/${p._id}`, { method: 'DELETE' });
+                                const delData = await delRes.json();
+                                if (delData.status === 'success') {
+                                    if (activeProjectId === p._id) activeProjectId = null;
+                                    loadProjects();
+                                    window.customAlert('Project deleted successfully.', 'success', 'Deleted');
+                                } else {
+                                    window.customAlert(delData.message, 'error', 'Error');
+                                }
+                            } catch (err) {
+                                window.customAlert('Failed to delete project: ' + err.message, 'error', 'Error');
+                            }
+                        }
+                    );
+                });
+
+                projectsList.appendChild(item);
+            });
+        }
+
+        // Select a Project
+        function selectProject(projectId) {
+            activeProjectId = projectId;
+            
+            // Re-render sidebar to update active styles
+            renderProjectsList();
+
+            // Load details in right panel
+            loadProjectDetails(projectId);
+        }
+
+        // Load project and its versions from backend
+        async function loadProjectDetails(projectId) {
+            projectDetailsPane.innerHTML = `
+                <div style="flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-muted);">
+                    <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 32px; color: var(--accent); margin-right: 12px;"></i>
+                    Retrieving project info...
+                </div>`;
+
+            try {
+                const res = await fetch(`/api/projects/${projectId}`);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    renderProjectDetails(data.project, data.versions);
+                } else {
+                    projectDetailsPane.innerHTML = `<div style="color:var(--red); text-align:center; padding: 40px;">${data.message}</div>`;
+                }
+            } catch (err) {
+                projectDetailsPane.innerHTML = `<div style="color:var(--red); text-align:center; padding: 40px;">Error: ${err.message}</div>`;
+            }
+        }
+
+        // Render project info & versions in details pane
+        function renderProjectDetails(project, versions) {
+            const date = new Date(project.created_at).toLocaleDateString(undefined, {
+                month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+
+            let versionsHtml = '';
+            if (versions.length === 0) {
+                versionsHtml = `
+                    <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 48px 24px; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); background: rgba(255,255,255,0.01);">
+                        <i class="fa-solid fa-code-branch" style="font-size: 32px; margin-bottom: 12px;"></i>
+                        <p style="margin:0; font-size:13px;">No versions found for this project.<br>Click "Create Version" to start model iteration.</p>
+                    </div>`;
+            } else {
+                versions.forEach(v => {
+                    const status = v.status || 'untrained';
+                    let statusLabel = 'Untrained';
+                    let statusClass = 'untrained';
+                    let iconHtml = '<i class="fa-solid fa-circle-question"></i>';
+                    
+                    if (status === 'training') {
+                        statusLabel = 'Training';
+                        statusClass = 'training';
+                        iconHtml = '<i class="fa-solid fa-rotate fa-spin"></i>';
+                    } else if (status === 'trained') {
+                        statusLabel = 'Trained';
+                        statusClass = 'trained';
+                        iconHtml = '<i class="fa-solid fa-circle-check"></i>';
+                    } else if (status === 'failed') {
+                        statusLabel = 'Failed';
+                        statusClass = 'failed';
+                        iconHtml = '<i class="fa-solid fa-circle-exclamation"></i>';
+                    } else if (status === 'stopped') {
+                        statusLabel = 'Stopped';
+                        statusClass = 'untrained';
+                        iconHtml = '<i class="fa-solid fa-circle-stop"></i>';
+                    }
+
+                    // Metrics
+                    let accVal = '—';
+                    let lossVal = '—';
+                    const metrics = v.metrics || {};
+                    if (status === 'trained' || status === 'stopped') {
+                        if (metrics.accuracy !== undefined) {
+                            accVal = `${metrics.accuracy}%`;
+                        }
+                        if (metrics.val_loss !== undefined) {
+                            lossVal = metrics.val_loss.toFixed(4);
+                        }
+                    }
+
+                    // Check if test ground button should be enabled
+                    const testDisabled = status !== 'trained' ? 'disabled' : '';
+
+                    versionsHtml += `
+                        <div class="version-card">
+                            <div class="version-card-header">
+                                <span class="version-title">${escapeHtml(v.version_name)}</span>
+                                <span class="status-badge ${statusClass}">
+                                    ${iconHtml} ${statusLabel}
+                                </span>
+                            </div>
+                            
+                            <div class="version-metrics">
+                                <div class="metric-item">
+                                    <span class="metric-label">Val Accuracy</span>
+                                    <span class="metric-val ${accVal !== '—' ? 'highlight' : ''}">${accVal}</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Val Loss</span>
+                                    <span class="metric-val">${lossVal}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="version-meta-row">
+                                <span>Updated: ${new Date(v.updated_at).toLocaleString()}</span>
+                            </div>
+
+                            ${status === 'failed' && metrics.error ? `
+                            <div style="font-size:11px; color:var(--red); background:rgba(255,107,107,0.06); padding:8px; border-radius:4px; border:1px solid rgba(255,107,107,0.15); font-family:var(--font-mono); max-height:80px; overflow-y:auto; word-break:break-all;">
+                                <strong>Error:</strong> ${escapeHtml(metrics.error)}
+                            </div>
+                            ` : ''}
+
+                            <div class="version-actions">
+                                <a href="/editor?version_id=${v._id}" class="btn btn-ghost btn-action-ver" title="Build/Modify Model Graph">
+                                    <i class="fa-solid fa-pencil"></i> Build
+                                </a>
+                                <a href="/train?version_id=${v._id}" class="btn btn-ghost btn-action-ver" title="Train Model Model">
+                                    <i class="fa-solid fa-dumbbell"></i> Train
+                                </a>
+                                <a href="/playground?version_id=${v._id}" class="btn btn-primary btn-action-ver ${testDisabled}" style="${status !== 'trained' ? 'opacity:0.4; pointer-events:none;' : ''}" title="Test Trained Model on Images">
+                                    <i class="fa-solid fa-vial"></i> Test
+                                </a>
+                                <button class="btn-delete-ver" data-id="${v._id}" data-name="${v.version_name}" title="Delete Version">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            let datasetHtml = '';
+            if (project.dataset) {
+                const ds = project.dataset;
+                const uploadDate = new Date(ds.uploaded_at).toLocaleString();
+                
+                let distHtml = '';
+                if (ds.distribution && Object.keys(ds.distribution).length > 0) {
+                    distHtml = `
+                        <div class="class-distribution" style="margin-top: 24px;">
+                            <h4 style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">Class Distribution</h4>
+                            <div style="display: flex; flex-direction: column; gap: 12px;">
+                                ${Object.entries(ds.distribution).map(([className, count]) => {
+                                    const pct = ((count / ds.num_samples) * 100).toFixed(1);
+                                    return `
+                                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                                            <div style="display: flex; justify-content: space-between; font-size: 11px;">
+                                                <span style="font-weight: 600; color: var(--text-primary);">${escapeHtml(className)}</span>
+                                                <span style="color: var(--text-muted);">${count} samples (${pct}%)</span>
+                                            </div>
+                                            <div style="width: 100%; height: 6px; background: var(--border-subtle); border-radius: 3px; overflow: hidden;">
+                                                <div style="width: ${pct}%; height: 100%; background: var(--accent); border-radius: 3px;"></div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                datasetHtml = `
+                    <div class="details-body" style="padding: 24px; max-width: 700px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;">
+                        <div class="dataset-info-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 20px; display: flex; align-items: flex-start; gap: 16px;">
+                            <div style="background: var(--accent-glow); color: var(--accent); width: 48px; height: 48px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0;">
+                                <i class="fa-solid fa-file-zipper"></i>
+                            </div>
+                            <div style="flex: 1; min-width: 0;">
+                                <h3 style="margin: 0 0 6px 0; font-size: 16px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(ds.filename)}</h3>
+                                <p style="margin: 0; font-size: 11px; color: var(--text-muted);">Uploaded: ${uploadDate}</p>
+                                
+                                <div style="display: flex; gap: 24px; margin-top: 16px;">
+                                    <div>
+                                        <span style="display: block; font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Classes</span>
+                                        <span style="font-size: 18px; font-weight: 700; color: var(--accent);">${ds.num_classes}</span>
+                                    </div>
+                                    <div>
+                                        <span style="display: block; font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Total Images</span>
+                                        <span style="font-size: 18px; font-weight: 700; color: var(--accent);">${ds.num_samples}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn btn-ghost" id="btn-delete-dataset" style="color: var(--red); padding: 8px 12px;" title="Delete Dataset">
+                                <i class="fa-solid fa-trash-can"></i> Delete
+                            </button>
+                        </div>
+                        
+                        ${distHtml}
+                    </div>
+                `;
+            } else {
+                datasetHtml = `
+                    <div class="details-body" style="padding: 24px; display: flex; align-items: center; justify-content: center; flex: 1;">
+                        <div class="dataset-upload-zone" id="dataset-upload-zone" style="max-width:550px; width:100%; border:2px dashed var(--border-default); border-radius:var(--radius-md); padding:40px 20px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;">
+                            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 40px; color: var(--text-muted);"></i>
+                            <div style="text-align:center;">
+                                <h3 style="margin: 0 0 6px 0; font-size: 15px; font-weight: 600; color: var(--text-primary);">Upload Classification Dataset</h3>
+                                <p style="margin: 0; font-size: 11.5px; color: var(--text-muted); line-height:1.6; max-width:380px; margin: 0 auto;">
+                                    Upload a ZIP archive containing class subdirectories filled with images.
+                                    e.g., <code>dataset.zip</code> &rarr; <code>cats/</code>, <code>dogs/</code>.
+                                </p>
+                            </div>
+                            <input type="file" id="dataset-zip-file" accept=".zip" style="display: none;">
+                            <button class="btn btn-primary btn-sm" id="btn-select-zip-file">
+                                <i class="fa-solid fa-file-zipper"></i> Select ZIP File
+                            </button>
+                            <div id="dataset-upload-status" style="margin-top: 10px; font-size: 11.5px; color: var(--text-secondary); display: none;"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            projectDetailsPane.innerHTML = `
+                <div class="details-header">
+                    <div class="details-title-area">
+                        <h2 style="display: flex; align-items: center; gap: 8px;">
+                            ${escapeHtml(project.name)}
+                            <button id="btn-edit-project-header" title="Edit Name/Description" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 4px; display: inline-flex; align-items: center; justify-content: center; transition: var(--transition); border-radius: 4px;">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                        </h2>
+                        <p>${escapeHtml(project.description || 'No description provided.')}</p>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                            <span>Created on: ${date}</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" id="btn-create-version-modal">
+                        <i class="fa-solid fa-code-branch"></i> Create Version
+                    </button>
+                </div>
+
+                <div class="details-tabs">
+                    <button class="tab-btn active" data-tab="models">
+                        <i class="fa-solid fa-folder-tree"></i> Model Versions
+                    </button>
+                    <button class="tab-btn" data-tab="dataset">
+                        <i class="fa-solid fa-database"></i> Project Dataset
+                    </button>
+                </div>
+                
+                <div class="tab-content" id="tab-content-models">
+                    <div class="details-body">
+                        <div class="section-header">
+                            <h3>Model Versions & Iterations</h3>
+                        </div>
+                        <div class="versions-grid">
+                            ${versionsHtml}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-content-dataset" style="display: none; height: 100%;">
+                    ${datasetHtml}
+                </div>
+            `;
+
+            // Setup Event Listener for Create Version modal trigger
+            const btnCreateVersionModal = document.getElementById('btn-create-version-modal');
+            btnCreateVersionModal.addEventListener('click', () => {
+                createVersionForm.reset();
+                
+                // Populate options in "Copy Graph Select" dropdown
+                copyGraphSelect.innerHTML = '<option value="">Start with Empty Graph</option>';
+                versions.forEach(v => {
+                    copyGraphSelect.innerHTML += `<option value="${v._id}">Copy structure of ${escapeHtml(v.version_name)}</option>`;
+                });
+                
+                // Auto-suggest next version name (e.g. if v1, suggest v2)
+                const nextSuggestedName = suggestNextVersionName(versions);
+                document.getElementById('version-name').value = nextSuggestedName;
+
+                createVersionOverlay.style.display = 'flex';
+            });
+
+            // Setup Event Listener for deleting versions
+            const deleteVerButtons = projectDetailsPane.querySelectorAll('.btn-delete-ver');
+            deleteVerButtons.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const verId = btn.getAttribute('data-id');
+                    const verName = btn.getAttribute('data-name');
+                    window.customConfirm(
+                        `Are you sure you want to delete version "${escapeHtml(verName)}"? All neural network configurations and trained weights files will be permanently lost!`,
+                        async () => {
+                            try {
+                                const delRes = await fetch(`/api/versions/${verId}`, { method: 'DELETE' });
+                                const delData = await delRes.json();
+                                if (delData.status === 'success') {
+                                    window.customAlert('Version deleted successfully.', 'success', 'Deleted');
+                                    loadProjectDetails(project._id);
+                                } else {
+                                    window.customAlert(delData.message, 'error', 'Error');
+                                }
+                            } catch (err) {
+                                window.customAlert('Failed to delete version: ' + err.message, 'error', 'Error');
+                            }
+                        }
+                    );
+                });
+            });
+
+            // Setup Event Listener for Edit Project header trigger
+            const btnEditProjectHeader = document.getElementById('btn-edit-project-header');
+            if (btnEditProjectHeader) {
+                btnEditProjectHeader.addEventListener('click', () => {
+                    openEditProjectModal(project._id, project.name, project.description);
+                });
+            }
+
+            // Tab switching logic
+            const tabButtons = projectDetailsPane.querySelectorAll('.tab-btn');
+            const tabContents = projectDetailsPane.querySelectorAll('.tab-content');
+            tabButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tabName = btn.getAttribute('data-tab');
+                    tabButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    tabContents.forEach(content => {
+                        content.style.display = content.id === `tab-content-${tabName}` ? 'flex' : 'none';
+                    });
+                });
+            });
+
+            // Dataset Event Listeners
+            const btnSelectZipFile = document.getElementById('btn-select-zip-file');
+            const datasetZipFile = document.getElementById('dataset-zip-file');
+            const datasetUploadZone = document.getElementById('dataset-upload-zone');
+            
+            if (btnSelectZipFile && datasetZipFile) {
+                btnSelectZipFile.addEventListener('click', () => datasetZipFile.click());
+                datasetZipFile.addEventListener('change', () => {
+                    if (datasetZipFile.files.length > 0) {
+                        uploadProjectDataset(project._id, datasetZipFile.files[0]);
+                    }
+                });
+            }
+            
+            if (datasetUploadZone) {
+                datasetUploadZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    datasetUploadZone.classList.add('dragover');
+                });
+                datasetUploadZone.addEventListener('dragleave', () => {
+                    datasetUploadZone.classList.remove('dragover');
+                });
+                datasetUploadZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    datasetUploadZone.classList.remove('dragover');
+                    if (e.dataTransfer.files.length > 0) {
+                        const file = e.dataTransfer.files[0];
+                        if (file.name.endsWith('.zip')) {
+                            uploadProjectDataset(project._id, file);
+                        } else {
+                            window.customAlert('Please drop a valid .zip dataset archive.', 'error', 'Invalid File');
+                        }
+                    }
+                });
+            }
+            
+            const btnDeleteDataset = document.getElementById('btn-delete-dataset');
+            if (btnDeleteDataset) {
+                btnDeleteDataset.addEventListener('click', () => {
+                    window.customConfirm(
+                        'Are you sure you want to delete this project dataset? This will permanently delete the uploaded archive and all extracted images!',
+                        async () => {
+                            try {
+                                const delRes = await fetch(`/api/projects/${project._id}/dataset`, { method: 'DELETE' });
+                                const delData = await delRes.json();
+                                if (delData.status === 'success') {
+                                    window.customAlert('Dataset deleted successfully.', 'success', 'Deleted');
+                                    loadProjectDetails(project._id);
+                                } else {
+                                    window.customAlert(delData.message, 'error', 'Error');
+                                }
+                            } catch (err) {
+                                window.customAlert('Failed to delete dataset: ' + err.message, 'error', 'Error');
+                            }
+                        }
+                    );
+                });
+            }
+        }
+
+        // Helper to upload classification dataset ZIP
+        async function uploadProjectDataset(projectId, file) {
+            const statusDiv = document.getElementById('dataset-upload-status');
+            if (statusDiv) {
+                statusDiv.style.display = 'block';
+                statusDiv.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Uploading and validating dataset ZIP...`;
+            }
+            
+            const formData = new FormData();
+            formData.append('dataset', file);
+            
+            try {
+                const response = await fetch(`/api/projects/${projectId}/dataset`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    window.customAlert('Dataset uploaded and processed successfully!', 'success', 'Success');
+                    loadProjectDetails(projectId);
+                } else {
+                    window.customAlert(data.message, 'error', 'Upload Failed');
+                    if (statusDiv) statusDiv.style.display = 'none';
+                }
+            } catch (err) {
+                window.customAlert('Failed to upload dataset: ' + err.message, 'error', 'Error');
+                if (statusDiv) statusDiv.style.display = 'none';
+            }
+        }
+
+        // Helper to open Edit Project modal
+        function openEditProjectModal(projectId, currentName, currentDesc) {
+            editProjectIdInput.value = projectId;
+            editProjectNameInput.value = currentName;
+            editProjectDescInput.value = currentDesc || '';
+            editProjectOverlay.style.display = 'flex';
+        }
+
+        // Helper to suggest next version name
+        function suggestNextVersionName(versions) {
+            if (versions.length === 0) return 'v1';
+            
+            // Try to match v<number> of the last version
+            const lastVer = versions[versions.length - 1].version_name;
+            const match = lastVer.match(/^v(\d+)$/i);
+            if (match) {
+                const nextNum = parseInt(match[1], 10) + 1;
+                return `v${nextNum}`;
+            }
+            
+            // Fallback
+            return `${lastVer}_v2`;
+        }
+
+        // Helper to escape HTML characters (to prevent XSS)
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    });
+</script>
+{% endblock %}

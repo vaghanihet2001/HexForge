@@ -116,3 +116,41 @@ def evaluate_model(model, input_shape, dataset_path):
         "fps": round(fps, 2),
         "classes": dataset.classes
     }
+
+def inspect_classification_dataset(zip_path, extract_to):
+    import os, shutil
+    
+    # 1. Extract zip
+    dataset_root = extract_dataset(zip_path, extract_to)
+    
+    # 2. Scan class directories
+    classes = []
+    distribution = {}
+    total_samples = 0
+    
+    valid_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff'}
+    
+    for item in sorted(os.listdir(dataset_root)):
+        item_path = os.path.join(dataset_root, item)
+        if os.path.isdir(item_path) and not item.startswith('.'):
+            # Count images in this folder
+            image_count = 0
+            for root_dir, _, files in os.walk(item_path):
+                for f in files:
+                    ext = os.path.splitext(f)[1].lower()
+                    if ext in valid_extensions:
+                        image_count += 1
+            if image_count > 0:
+                classes.append(item)
+                distribution[item] = image_count
+                total_samples += image_count
+                
+    if len(classes) == 0:
+        raise ValueError("No valid classification classes found. Make sure the dataset ZIP contains folders (classes) with images.")
+        
+    return {
+        "num_classes": len(classes),
+        "classes": classes,
+        "num_samples": total_samples,
+        "distribution": distribution
+    }

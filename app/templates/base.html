@@ -5,65 +5,71 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="HEXForge — Visual PyTorch model builder, profiler, and ONNX exporter">
     <title>{% block title %}HEXForge{% endblock %}</title>
+    <link favicon="{{ url_for('static', filename='uploads/logo-removebg.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block extra_head %}{% endblock %}
+    <script>
+        (function() {
+            var sidebarState = localStorage.getItem('sidebar-state') || 'expanded';
+            if (sidebarState === 'collapsed') {
+                document.documentElement.classList.add('nav-collapsed');
+            }
+        })();
+    </script>
 </head>
 <body>
 
-    <nav class="topbar">
-        <div class="topbar-left">
-            <a href="{{ url_for('main.dashboard') }}" class="nav-brand">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('main.dashboard') }}" class="sidebar-brand">
                 <img src="{{ url_for('static', filename='logo-removebg.png') }}" alt="HEX Logo" class="logo-img">
                 <span class="logo-text">HexForge</span>
             </a>
-
-            <ul class="nav-links">
-                <li><a href="{{ url_for('main.dashboard') }}" {% if request.endpoint=='main.dashboard' %}class="active"{% endif %}>
-                    📊 Dashboard
-                </a></li>
-                <li><a href="{{ url_for('main.editor') }}" {% if request.endpoint=='main.editor' %}class="active"{% endif %}>
-                    🧠 Node Editor
-                </a></li>
-            </ul>
+            <button id="sidebar-toggle-btn" class="nav-toggle-btn" title="Toggle Sidebar">
+                <i class="fa-solid fa-chevron-left"></i>
+            </button>
         </div>
 
-        <!-- Right side buttons mimicking HexFlow Header.jsx -->
-        <div class="topbar-right">
+        <ul class="sidebar-menu">
+            <li><a href="{{ url_for('main.dashboard') }}" {% if request.endpoint=='main.dashboard' %}class="active"{% endif %} title="Dashboard">
+                <i class="fa-solid fa-chart-simple"></i>
+                <span class="sidebar-label">Dashboard</span>
+            </a></li>
+            <li><a href="{{ url_for('main.projects') }}" {% if request.endpoint=='main.projects' %}class="active"{% endif %} title="Projects">
+                <i class="fa-solid fa-folder-open"></i>
+                <span class="sidebar-label">Projects</span>
+            </a></li>
+            <li><a href="{{ url_for('main.editor') }}" {% if request.endpoint=='main.editor' %}class="active"{% endif %} title="Node Editor">
+                <i class="fa-solid fa-network-wired"></i>
+                <span class="sidebar-label">Node Editor</span>
+            </a></li>
+            <li><a href="{{ url_for('main.training') }}" {% if request.endpoint=='main.training' %}class="active"{% endif %} title="Training">
+                <i class="fa-solid fa-dumbbell"></i>
+                <span class="sidebar-label">Training</span>
+            </a></li>
+            <li><a href="{{ url_for('main.playground') }}" {% if request.endpoint=='main.playground' %}class="active"{% endif %} title="Playground">
+                <i class="fa-solid fa-vial"></i>
+                <span class="sidebar-label">Playground</span>
+            </a></li>
+        </ul>
+
+        <div class="sidebar-footer">
             <!-- Theme Toggle -->
-            <button id="theme-toggle" class="header-btn" title="Toggle Theme">
+            <button id="theme-toggle" class="sidebar-footer-item" title="Toggle Theme">
                 <i class="fa-solid fa-moon"></i>
+                <span class="sidebar-label">Toggle Theme</span>
             </button>
 
             <!-- Info Button -->
-            <div class="header-dropdown-wrap" id="info-dropdown-wrap">
-                <button class="header-btn" id="info-btn" title="Developer Info">
-                    <i class="fa-solid fa-circle-info"></i>
-                </button>
-                <div class="header-dropdown card shadow-lg" id="info-dropdown">
-                    <div class="card-body">
-                        <h6>Made by: Het Vaghani</h6>
-                        <div class="dropdown-links-list">
-                            <a href="https://github.com/vaghanihet2001" target="_blank" rel="noopener noreferrer">
-                                <i class="fa-brands fa-github"></i> GitHub
-                            </a>
-                            <a href="https://www.linkedin.com/in/ai-ml-developer" target="_blank" rel="noopener noreferrer">
-                                <i class="fa-brands fa-linkedin"></i> LinkedIn
-                            </a>
-                            <a href="mailto:vaghanihet2001@gmail.com">
-                                <i class="fa-solid fa-envelope"></i> Email
-                            </a>
-                            <a href="https://hexverce.in/" target="_blank" rel="noopener noreferrer">
-                                <i class="fa-solid fa-globe"></i> HexVerce Website
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <button class="sidebar-footer-item" id="info-btn" title="Developer Info">
+                <i class="fa-solid fa-circle-info"></i>
+                <span class="sidebar-label">About Developer</span>
+            </button>
         </div>
-    </nav>
+    </aside>
 
     <main class="page-content">
         {% block content %}{% endblock %}
@@ -71,23 +77,61 @@
 
     <script src="{{ url_for('static', filename='js/api.js') }}"></script>
     <script>
-        // Header interactive features (Info, User profile dropdowns and Theme toggler)
         document.addEventListener('DOMContentLoaded', () => {
             const infoBtn = document.getElementById('info-btn');
             const infoDropdown = document.getElementById('info-dropdown');
             const themeToggleBtn = document.getElementById('theme-toggle');
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebar-toggle-btn');
 
-            // Dropdown triggers
+            // Sidebar collapse logic (persists via localStorage)
+            const isCollapsed = document.documentElement.classList.contains('nav-collapsed');
+            if (isCollapsed) {
+                sidebar.classList.add('collapsed');
+                const icon = sidebarToggle.querySelector('i');
+                icon.className = 'fa-solid fa-chevron-right';
+            }
+
+            sidebarToggle.addEventListener('click', () => {
+                const nowCollapsed = document.documentElement.classList.toggle('nav-collapsed');
+                sidebar.classList.toggle('collapsed', nowCollapsed);
+                const icon = sidebarToggle.querySelector('i');
+                icon.className = nowCollapsed ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-left';
+                localStorage.setItem('sidebar-state', nowCollapsed ? 'collapsed' : 'expanded');
+                // Trigger window resize event to let LiteGraph canvas resize itself smoothly
+                window.dispatchEvent(new Event('resize'));
+            });
+
+            // Info Modal Dialog trigger
             infoBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                infoDropdown.classList.toggle('show');
+                showCustomAlert({
+                    title: 'Developer Information',
+                    message: `
+                        <div style="text-align: center; margin-bottom: 16px;">
+                            <div style="font-size: 32px; color: var(--accent); margin-bottom: 8px;"><i class="fa-solid fa-code"></i></div>
+                            <h4 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-primary);">Het Vaghani</h4>
+                            <p style="margin: 4px 0 0; font-size: 12px; color: var(--text-secondary);">AI / ML Developer</p>
+                        </div>
+                        <div class="dropdown-links-list" style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border-subtle); padding-top: 16px;">
+                            <a href="https://github.com/vaghanihet2001" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; text-decoration: none; color: var(--text-primary); padding: 10px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-card);">
+                                <i class="fa-brands fa-github" style="font-size: 16px; color: var(--accent);"></i> GitHub Profile
+                            </a>
+                            <a href="https://www.linkedin.com/in/ai-ml-developer" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; text-decoration: none; color: var(--text-primary); padding: 10px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-card);">
+                                <i class="fa-brands fa-linkedin" style="font-size: 16px; color: var(--accent);"></i> LinkedIn Profile
+                            </a>
+                            <a href="mailto:vaghanihet2001@gmail.com" class="btn btn-ghost" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; text-decoration: none; color: var(--text-primary); padding: 10px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-card);">
+                                <i class="fa-solid fa-envelope" style="font-size: 16px; color: var(--accent);"></i> Email Developer
+                            </a>
+                            <a href="https://hexverce.in/" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; text-decoration: none; color: var(--text-primary); padding: 10px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-card);">
+                                <i class="fa-solid fa-globe" style="font-size: 16px; color: var(--accent);"></i> HexVerce Website
+                            </a>
+                        </div>
+                    `,
+                    type: 'info',
+                    confirmText: 'Close'
+                });
             });
-
-            document.addEventListener('click', () => {
-                infoDropdown.classList.remove('show');
-            });
-
-            infoDropdown.addEventListener('click', (e) => e.stopPropagation());
 
             // Theme toggle logic (persists via localStorage)
             let currentTheme = localStorage.getItem('app-theme') || 'dark';
@@ -120,7 +164,7 @@
         <h3 id="custom-alert-title" style="margin: 0 0 12px; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
           <i class="fa-solid fa-circle-info"></i> Notification
         </h3>
-        <div id="custom-alert-body" style="font-size: 13px; color: var(--text-primary); margin: 0 0 20px; line-height: 1.55; max-height: 250px; overflow-y: auto; word-break: break-word; font-family: var(--font-sans);"></div>
+        <div id="custom-alert-body" style="font-size: 13px; color: var(--text-primary); margin: 0 0 20px; line-height: 1.55; max-height: 75vh; overflow-y: auto; word-break: break-word; font-family: var(--font-sans);"></div>
         <div style="display: flex; justify-content: flex-end; gap: 8px; align-items: center;" id="custom-alert-footer">
           <button class="btn btn-primary" id="custom-alert-btn-close" style="padding: 6px 16px; font-size: 12px; min-width: 80px;">OK</button>
         </div>
@@ -139,7 +183,11 @@
             let cancelBtn = document.getElementById("custom-alert-btn-cancel");
             if (cancelBtn) cancelBtn.remove();
 
-            bodyEl.innerHTML = (options.message || "").replace(/\n/g, "<br>");
+            if (options.message && options.message.trim().startsWith("<")) {
+                bodyEl.innerHTML = options.message;
+            } else {
+                bodyEl.innerHTML = (options.message || "").replace(/\n/g, "<br>");
+            }
             cardEl.style.borderLeft = "";
             titleEl.style.color = "";
             let iconHtml = '<i class="fa-solid fa-circle-info" style="color:var(--accent);"></i>';

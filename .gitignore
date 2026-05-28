@@ -1,7 +1,9 @@
 /data
+logs/
 *.pt
 *.onnx
 *.zip
 *.csv
 **/__pycache__
 **/uploads
+.env

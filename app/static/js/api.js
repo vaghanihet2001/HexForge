@@ -192,58 +192,197 @@ document.addEventListener("editorLoaded", () => {
         return title.trim();
     }
 
+    // Dedicated Profiling UI elements and functions
+    const profPanel = document.getElementById("profiling-panel");
+    const profClose = document.getElementById("profiling-close");
+    const btnRunProfile = document.getElementById("btn-run-profile");
+    const profIterations = document.getElementById("profiling-iterations");
+    const profSummary = document.getElementById("profiling-summary");
+    const profSummaryLatency = document.getElementById("prof-summary-latency");
+    const profSummaryLayers = document.getElementById("prof-summary-layers");
+    const profSummaryStatus = document.getElementById("prof-summary-status");
+    
+    const bottomPanel = document.getElementById("profiling-bottom-panel");
+    const btnBottomToggle = document.getElementById("btn-bottom-panel-toggle");
+    const bottomToggleIcon = document.getElementById("bottom-panel-toggle-icon");
+    const btnBottomClose = document.getElementById("btn-bottom-panel-close");
+    const profilingTableBody = document.getElementById("profiling-table-body");
+
+    const shell = document.getElementById("editor-shell");
+    const container = document.getElementById('editor-canvas').parentElement;
+
+    function openProfilingPanel() {
+        if (window.CloseNodePanel) {
+            window.CloseNodePanel();
+        } else {
+            const propsPanel = document.getElementById("node-props-panel");
+            if (propsPanel) propsPanel.classList.add("hidden");
+            if (shell) shell.classList.remove("panel-open");
+        }
+        
+        if (profPanel) {
+            profPanel.classList.remove("hidden");
+        }
+        if (bottomPanel) {
+            bottomPanel.style.display = "flex";
+            bottomPanel.classList.add("right-open");
+        }
+        if (shell) {
+            shell.classList.add("panel-open");
+        }
+        
+        // Trigger canvas resize
+        if (window.AppGraph && LiteGraph.LGraphCanvas.active_canvas) {
+            LiteGraph.LGraphCanvas.active_canvas.resize(container.clientWidth, container.clientHeight);
+        }
+    }
+
+    function clearProfilingIndicators() {
+        if (window.AppGraph && window.AppGraph._nodes) {
+            window.AppGraph._nodes.forEach(n => {
+                n.has_error = false;
+                delete n.onDrawBackground;
+                n.boxcolor = null;
+                n.color = (window.NODE_META && window.NODE_META[n.type]) ? window.NODE_META[n.type].color : null;
+                const cleaned = getBaseTitle(n);
+                n.title = cleaned;
+                n.originalTitle = cleaned;
+                if (n.properties) {
+                    delete n.properties.latency;
+                }
+                if (window.RefreshStatusWidgets) {
+                    window.RefreshStatusWidgets(n);
+                }
+            });
+            if (window.AppGraph.links) {
+                for (let linkId in window.AppGraph.links) {
+                    window.AppGraph.links[linkId].color = null;
+                }
+            }
+            if (LiteGraph.LGraphCanvas.active_canvas) {
+                LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+            }
+        }
+    }
+
+    function closeProfilingPanel() {
+        if (profPanel) {
+            profPanel.classList.add("hidden");
+        }
+        if (bottomPanel) {
+            bottomPanel.style.display = "none";
+            bottomPanel.classList.remove("right-open");
+        }
+        if (shell) {
+            shell.classList.remove("panel-open");
+        }
+        
+        clearProfilingIndicators();
+        
+        // Trigger canvas resize
+        if (window.AppGraph && LiteGraph.LGraphCanvas.active_canvas) {
+            LiteGraph.LGraphCanvas.active_canvas.resize(container.clientWidth, container.clientHeight);
+        }
+    }
+
+    window.OpenProfilingPanel = openProfilingPanel;
+    window.CloseProfilingPanel = closeProfilingPanel;
+
+    if (profClose) {
+        profClose.addEventListener("click", closeProfilingPanel);
+    }
+    if (btnBottomClose) {
+        btnBottomClose.addEventListener("click", closeProfilingPanel);
+    }
+    if (btnBottomToggle) {
+        btnBottomToggle.addEventListener("click", () => {
+            if (bottomPanel) {
+                bottomPanel.classList.toggle("collapsed");
+                if (bottomPanel.classList.contains("collapsed")) {
+                    bottomToggleIcon.className = "fa-solid fa-chevron-up";
+                } else {
+                    bottomToggleIcon.className = "fa-solid fa-chevron-down";
+                }
+                // Smoothly trigger canvas resize updates
+                let count = 0;
+                const interval = setInterval(() => {
+                    window.dispatchEvent(new Event('resize'));
+                    count++;
+                    if (count > 20) clearInterval(interval);
+                }, 15);
+            }
+        });
+    }
+
     if (btnProfile) {
         btnProfile.addEventListener("click", () => {
             if (window.CloseAllDropdowns) window.CloseAllDropdowns();
+            openProfilingPanel();
+        });
+    }
 
-            // Clear previous error/profiling indicators from all nodes
-            if (window.AppGraph && window.AppGraph._nodes) {
-                window.AppGraph._nodes.forEach(n => {
-                    n.has_error = false;
-                    delete n.onDrawBackground;
-                    n.boxcolor = null;
-                    n.color = null;
-                    const cleaned = getBaseTitle(n);
-                    n.title = cleaned;
-                    n.originalTitle = cleaned;
-                    if (n.properties) {
-                        delete n.properties.latency;
-                    }
-                    if (window.RefreshStatusWidgets) {
-                        window.RefreshStatusWidgets(n);
-                    }
-                });
-                if (window.AppGraph.links) {
-                    for (let linkId in window.AppGraph.links) {
-                        window.AppGraph.links[linkId].color = null;
-                    }
-                }
-                if (LiteGraph.LGraphCanvas.active_canvas) {
-                    LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
-                }
+    if (btnRunProfile) {
+        btnRunProfile.addEventListener("click", () => {
+            const graphData = serializeGraph();
+            if (!graphData || graphData.length === 0) {
+                return window.customAlert("Graph is empty!", "warning", "Warning");
             }
 
-            const graphData = serializeGraph();
-            console.log("Sending graph data to backend...", graphData);
+            clearProfilingIndicators();
+
+            // Get iteration count
+            const numIterations = parseInt(profIterations.value) || 100;
 
             // Update UI to show loading
-            btnProfile.setAttribute("aria-busy", "true");
-            btnProfile.textContent = "Profiling...";
+            btnRunProfile.setAttribute("aria-busy", "true");
+            btnRunProfile.textContent = "Profiling...";
+            btnRunProfile.disabled = true;
+
+            if (profSummary) {
+                profSummary.style.display = "flex";
+                profSummaryStatus.textContent = "Running...";
+                profSummaryStatus.style.color = "var(--yellow)";
+                profSummaryLatency.textContent = "Computing...";
+                profSummaryLayers.textContent = "...";
+            }
+
+            // Clear table
+            profilingTableBody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align:center; padding:24px; color:var(--text-muted);">
+                        <i class="fa-solid fa-spinner fa-spin"></i> Profiling layer execution over ${numIterations} iterations...
+                    </td>
+                </tr>
+            `;
 
             fetch('/api/profile', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ graph: graphData })
+                body: JSON.stringify({ graph: graphData, num_iterations: numIterations })
             })
                 .then(response => response.json())
                 .then(data => {
                     console.log("Profile Results:", data);
                     if (data.status === "success" && window.AppGraph) {
-                        // Find max duration to scale colors
-                        const maxTime = Math.max(...data.results.map(r => r.duration_ms), 0.001);
+                        const results = data.results || [];
+                        
+                        // Compute total average latency
+                        let totalAvgLatency = 0;
+                        results.forEach(r => {
+                            totalAvgLatency += r.duration_ms;
+                        });
 
-                        data.results.forEach(res => {
+                        // Find max duration to scale colors
+                        const maxTime = Math.max(...results.map(r => r.duration_ms), 0.001);
+
+                        // Clear table content before population
+                        profilingTableBody.innerHTML = "";
+
+                        results.forEach(res => {
                             const node = window.AppGraph.getNodeById(Number(res.node_id));
+                            let nodeTitle = res.name;
+                            let nodeType = "Unknown";
+                            
                             if (node) {
                                 // Reset error status
                                 node.has_error = false;
@@ -255,12 +394,14 @@ document.addEventListener("editorLoaded", () => {
                                 node.properties.output_shape = shapeStr;
                                 const inShapeStr = res.input_shape ? `[${res.input_shape.join(', ')}]` : '';
                                 node.properties.input_shape = inShapeStr;
-                                node.properties.latency = `${res.duration_ms} ms`;
+                                node.properties.latency = `${res.duration_ms.toFixed(4)} ms`;
 
                                 // Clean name first
                                 const baseTitle = getBaseTitle(node);
                                 node.originalTitle = baseTitle;
                                 node.title = baseTitle;
+                                nodeTitle = baseTitle;
+                                nodeType = node.type.replace('pytorch/', '').toUpperCase();
 
                                 if (window.RefreshStatusWidgets) {
                                     window.RefreshStatusWidgets(node);
@@ -271,12 +412,40 @@ document.addEventListener("editorLoaded", () => {
                                 const r = Math.floor(50 + (205 * ratio)); // 50 to 255
                                 node.color = `rgb(${r}, 50, 50)`;
                             }
+
+                            // Append row to breakdown table
+                            const tr = document.createElement("tr");
+                            tr.innerHTML = `
+                                <td><strong>${nodeTitle}</strong></td>
+                                <td><span class="npp-type-badge" style="margin:0; font-size:10px; padding:2px 6px;">${nodeType}</span></td>
+                                <td class="latency-cell">${res.duration_ms.toFixed(4)} ms</td>
+                                <td class="mono-cell" style="color:var(--accent);">${res.input_shape ? `[${res.input_shape.join(', ')}]` : '-'}</td>
+                                <td class="mono-cell" style="color:var(--green);">${res.shape ? `[${res.shape.join(', ')}]` : '-'}</td>
+                            `;
+                            
+                            // Highlight node on table row hover
+                            tr.addEventListener("mouseenter", () => {
+                                if (node && LiteGraph.LGraphCanvas.active_canvas) {
+                                    LiteGraph.LGraphCanvas.active_canvas.selectNode(node, true);
+                                }
+                            });
+                            
+                            profilingTableBody.appendChild(tr);
                         });
+
+                        // Update summary card
+                        if (profSummary) {
+                            profSummaryStatus.textContent = "Completed";
+                            profSummaryStatus.style.color = "var(--green)";
+                            profSummaryLatency.textContent = `${totalAvgLatency.toFixed(4)} ms`;
+                            profSummaryLayers.textContent = results.length;
+                        }
+
                         // Force canvas redraw
                         if (LiteGraph.LGraphCanvas.active_canvas) {
                             LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
                         }
-                        window.customAlert("Profiling complete! Slowest nodes highlighted in red, output shapes traced.", "success", "Profiling Complete");
+                        window.customAlert("Profiling complete! Average layer latencies populated in data table.", "success", "Profiling Complete");
                     } else {
                         // Highlight the failing node if error_node_id is provided
                         if (data.error_node_id && window.AppGraph) {
@@ -309,16 +478,49 @@ document.addEventListener("editorLoaded", () => {
                                 }
                             }
                         }
+
+                        // Update summary card on error
+                        if (profSummary) {
+                            profSummaryStatus.textContent = "Failed";
+                            profSummaryStatus.style.color = "var(--red)";
+                            profSummaryLatency.textContent = "Error";
+                            profSummaryLayers.textContent = "0";
+                        }
+
+                        // Show error in table
+                        profilingTableBody.innerHTML = `
+                            <tr>
+                                <td colspan="5" style="text-align:center; padding:24px; color:var(--red); font-weight:600;">
+                                    ⚠️ Profiling failed: ${data.message}
+                                </td>
+                            </tr>
+                        `;
+
                         window.customAlert(data.message, "error", "Profiling Error");
                     }
                 })
                 .catch(err => {
                     console.error("Error profiling model:", err);
+                    if (profSummary) {
+                        profSummaryStatus.textContent = "Error";
+                        profSummaryStatus.style.color = "var(--red)";
+                        profSummaryLatency.textContent = "Error";
+                        profSummaryLayers.textContent = "0";
+                    }
+                    profilingTableBody.innerHTML = `
+                        <tr>
+                            <td colspan="5" style="text-align:center; padding:24px; color:var(--red); font-weight:600;">
+                                ⚠️ Connection / Server Error occurred during profiling.
+                            </td>
+                        </tr>
+                    `;
                     window.customAlert("An error occurred during profiling.", "error", "Error");
                 })
                 .finally(() => {
-                    btnProfile.removeAttribute("aria-busy");
-                    btnProfile.textContent = "Profile Node-Wise Speed";
+                    btnRunProfile.removeAttribute("aria-busy");
+                    btnRunProfile.textContent = "Start Profiling";
+                    btnRunProfile.removeAttribute("disabled");
+                    btnRunProfile.disabled = false;
                 });
         });
     }
@@ -331,13 +533,22 @@ document.addEventListener("editorLoaded", () => {
             if (!graphData) return window.customAlert("Graph is empty!", "warning", "Warning");
 
             const fileInput = document.getElementById('dataset-upload');
-            if (!fileInput.files.length) {
+            const hasProjDs = !!window.hasProjectDataset;
+            if (!fileInput.files.length && !hasProjDs) {
                 return window.customAlert("Please upload a .zip dataset first before evaluating!", "warning", "Dataset Missing");
             }
 
+            const urlParams = new URLSearchParams(window.location.search);
+            const activeVersionId = urlParams.get('version_id');
+
             const formData = new FormData();
             formData.append('graph', JSON.stringify(graphData));
-            formData.append('dataset', fileInput.files[0]);
+            if (fileInput.files.length) {
+                formData.append('dataset', fileInput.files[0]);
+            }
+            if (activeVersionId) {
+                formData.append('version_id', activeVersionId);
+            }
 
             btnEvaluate.setAttribute("aria-busy", "true");
             btnEvaluate.textContent = "Evaluating...";
@@ -355,27 +566,27 @@ document.addEventListener("editorLoaded", () => {
                         if (overlay && body) {
                             body.innerHTML = `
                                 <div class="result-metric">
-                                    <span class="metric-label">🎯 Accuracy</span>
+                                    <span class="metric-label"><i class="fa-solid fa-bullseye"></i> Accuracy</span>
                                     <span class="metric-value highlight">${res.accuracy}%</span>
                                 </div>
                                 <div class="result-metric">
-                                    <span class="metric-label">🖼️ Total Images</span>
+                                    <span class="metric-label"><i class="fa-solid fa-image"></i> Total Images</span>
                                     <span class="metric-value">${res.total_images}</span>
                                 </div>
                                 <div class="result-metric">
-                                    <span class="metric-label">✅ Correct Predictions</span>
+                                    <span class="metric-label"><i class="fa-solid fa-circle-check"></i> Correct Predictions</span>
                                     <span class="metric-value">${res.correct_predictions}</span>
                                 </div>
                                 <div class="result-metric">
-                                    <span class="metric-label">⚡ Throughput</span>
+                                    <span class="metric-label"><i class="fa-solid fa-gauge-high"></i> Throughput</span>
                                     <span class="metric-value highlight">${res.fps} img/sec</span>
                                 </div>
                                 <div class="result-metric">
-                                    <span class="metric-label">⏱️ Total Time</span>
+                                    <span class="metric-label"><i class="fa-solid fa-clock"></i> Total Time</span>
                                     <span class="metric-value">${res.total_time_seconds}s</span>
                                 </div>
                                 <div class="result-metric">
-                                    <span class="metric-label">📂 Classes</span>
+                                    <span class="metric-label"><i class="fa-solid fa-folder-open"></i> Classes</span>
                                     <span class="metric-value" style="font-size:12px;">${res.classes.join(", ")}</span>
                                 </div>
                             `;
@@ -425,14 +636,14 @@ document.addEventListener("editorLoaded", () => {
     if (btnInspectOnnx) {
         btnInspectOnnx.addEventListener("click", () => {
             if (window.CloseAllDropdowns) window.CloseAllDropdowns();
-            if (!onnxUploadInput.files.length) return window.customAlert("Please upload an ONNX model first.", "warning", "ONNX Missing");
+            if (!onnxUploadInput.files.length) return window.customAlert("Please upload a model file first.", "warning", "Model Missing");
 
             const file = onnxUploadInput.files[0];
             const formData = new FormData();
             formData.append("onnx_file", file);
 
             btnInspectOnnx.setAttribute("aria-busy", "true");
-            btnInspectOnnx.textContent = "Analyzing ONNX...";
+            btnInspectOnnx.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Analyzing Model...';
 
             fetch("/api/inspect-onnx", {
                 method: "POST",
@@ -446,17 +657,20 @@ document.addEventListener("editorLoaded", () => {
                     
                     // Render ONNX overlay
                     showONNXInspectorModal(res.data);
+
+                    const btnMenuLoad = document.getElementById("btn-onnx-load-canvas-menu");
+                    if (btnMenuLoad) btnMenuLoad.removeAttribute("disabled");
                 } else {
                     window.customAlert(res.message, "error", "Inspection Error");
                 }
             })
             .catch(err => {
-                console.error("ONNX Parsing Error:", err);
-                window.customAlert("An error occurred during ONNX parsing.", "error", "Error");
+                console.error("Model Parsing Error:", err);
+                window.customAlert("An error occurred during model parsing.", "error", "Error");
             })
             .finally(() => {
                 btnInspectOnnx.removeAttribute("aria-busy");
-                btnInspectOnnx.textContent = "🔍 Inspect ONNX Model";
+                btnInspectOnnx.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Inspect Model Info';
             });
         });
     }
@@ -594,16 +808,6 @@ document.addEventListener("editorLoaded", () => {
             }
         });
 
-        const constantValues = {};
-        data.nodes.forEach(n => {
-            if (n.op_type === "Constant") {
-                const outName = n.outputs[0];
-                if (outName && n.attributes && n.attributes.value !== undefined) {
-                    constantValues[outName] = n.attributes.value;
-                }
-            }
-        });
-
         const getInputShape = (tensorName) => {
             const modelInput = data.inputs.find(i => i.name === tensorName);
             if (modelInput && modelInput.shape) return modelInput.shape;
@@ -614,15 +818,14 @@ document.addEventListener("editorLoaded", () => {
             return null;
         };
 
-        const nonConstantNodes = data.nodes.filter(n => n.op_type !== "Constant");
         const columns = {};
 
-        nonConstantNodes.forEach((n, idx) => {
+        data.nodes.forEach((n, idx) => {
             let lgType = "pytorch/generic";
             const op = n.op_type.toLowerCase();
 
-            if (op === "conv")                          lgType = "pytorch/conv2d";
-            else if (op === "convtranspose")            lgType = "pytorch/convtranspose2d";
+            if (op === "conv" || op === "conv2d" || op === "conv1d") lgType = "pytorch/conv2d";
+            else if (op === "convtranspose" || op === "convtranspose2d") lgType = "pytorch/convtranspose2d";
             else if (op === "relu")                     lgType = "pytorch/relu";
             else if (op === "leakyrelu")                lgType = "pytorch/leakyrelu";
             else if (op === "sigmoid")                  lgType = "pytorch/sigmoid";
@@ -653,7 +856,7 @@ document.addEventListener("editorLoaded", () => {
             node.title = n.name;
             
             // Set input & output shape properties for visual feedback
-            const activeInputs = n.inputs.filter(inName => constantValues[inName] === undefined);
+            const activeInputs = n.inputs || [];
             if (activeInputs.length > 0) {
                 const inShape = getInputShape(activeInputs[0]);
                 if (inShape) {
@@ -682,10 +885,8 @@ document.addEventListener("editorLoaded", () => {
                     node.properties.out_channels = outShape[1];
                 }
                 const inTensorName = n.inputs[0];
-                const parent = tensorProducer[inTensorName];
-                if (parent) {
-                    const parentShape = data.inputs.find(i => i.name === inTensorName)?.shape || 
-                                        data.nodes.find(node => node.outputs.includes(inTensorName))?.output_shapes?.[inTensorName];
+                if (inTensorName) {
+                    const parentShape = getInputShape(inTensorName);
                     if (parentShape && parentShape.length >= 2) {
                         node.properties.in_channels = parentShape[1];
                     }
@@ -707,10 +908,11 @@ document.addEventListener("editorLoaded", () => {
                     node.properties.out_features = outShape[outShape.length - 1];
                 }
                 const inTensorName = n.inputs[0];
-                const parentShape = data.inputs.find(i => i.name === inTensorName)?.shape || 
-                                    data.nodes.find(node => node.outputs.includes(inTensorName))?.output_shapes?.[inTensorName];
-                if (parentShape && parentShape.length >= 1) {
-                    node.properties.in_features = parentShape[parentShape.length - 1];
+                if (inTensorName) {
+                    const parentShape = getInputShape(inTensorName);
+                    if (parentShape && parentShape.length >= 1) {
+                        node.properties.in_features = parentShape[parentShape.length - 1];
+                    }
                 }
                 if (node.widgets) {
                     node.widgets.forEach(w => {
@@ -800,26 +1002,56 @@ document.addEventListener("editorLoaded", () => {
                 });
             }
 
-            n.inputs.forEach(inName => {
-                if (constantValues[inName] !== undefined) {
-                    const val = constantValues[inName];
+            // Populate constants and render them as button widgets on node
+            if (n.constants) {
+                Object.entries(n.constants).forEach(([cName, val]) => {
                     if (!node.properties) node.properties = {};
-                    node.properties[inName] = val;
-                    const displayVal = typeof val === 'object' ? JSON.stringify(val) : val;
-                    node.addWidget("text", inName, displayVal, (newVal) => {
-                        try {
-                            if (newVal.startsWith('[') || newVal.startsWith('{')) {
-                                node.properties[inName] = JSON.parse(newVal);
-                            } else {
-                                const num = Number(newVal);
-                                node.properties[inName] = !isNaN(num) ? num : newVal;
+                    node.properties[cName] = val;
+
+                    let displayName = cName;
+                    if (cName === "weight" || cName.endsWith(".weight")) {
+                        displayName = "W";
+                    } else if (cName === "bias" || cName.endsWith(".bias")) {
+                        displayName = "B";
+                    } else {
+                        if (displayName.length > 12) {
+                            displayName = displayName.substring(0, 9) + "...";
+                        }
+                    }
+
+                    let summary = "";
+                    if (Array.isArray(val)) {
+                        const getArrayShape = (arr) => {
+                            const shape = [];
+                            let curr = arr;
+                            while (Array.isArray(curr)) {
+                                shape.push(curr.length);
+                                curr = curr[0];
                             }
-                        } catch(e) {
-                            node.properties[inName] = newVal;
+                            return shape;
+                        };
+                        const shape = getArrayShape(val);
+                        summary = `[${shape.join(',')}]`;
+                    } else if (typeof val === 'object') {
+                        summary = `Object`;
+                    } else {
+                        summary = String(val);
+                        if (summary.length > 15) {
+                            summary = summary.substring(0, 12) + "...";
+                        }
+                    }
+
+                    node.addWidget("button", `${displayName}: ${summary}`, "", () => {
+                        const canvas = LiteGraph.LGraphCanvas.active_canvas;
+                        if (canvas && canvas.onShowNodePanel) {
+                            canvas.onShowNodePanel(node);
+                        }
+                        if (window.ShowConstantInSidePanel) {
+                            window.ShowConstantInSidePanel(cName, val);
                         }
                     });
-                }
-            });
+                });
+            }
 
             let parentXMax = 80;
             activeInputs.forEach(inName => {
@@ -865,18 +1097,26 @@ document.addEventListener("editorLoaded", () => {
         }
 
         document.getElementById("onnx-overlay").classList.remove("visible");
-        window.customAlert("ONNX Model imported successfully!\nConstant nodes are inlined inside target nodes.\nUnsupported operators were loaded as Red Generic Nodes.", "success", "Import Success");
+        window.customAlert("Model imported successfully!\nConstants are inlined inside target nodes.\nUnsupported operators were loaded as Red Generic Nodes.", "success", "Import Success");
     }
 
-    if (btnLoadCanvas) {
-        btnLoadCanvas.addEventListener("click", () => {
-            const data = window.LastParsedONNX;
-            if (!data || !window.AppGraph) return window.customAlert("No ONNX data loaded.", "warning", "Warning");
+    const btnLoadCanvasMenu = document.getElementById("btn-onnx-load-canvas-menu");
+    const btnLoadCanvasModal = document.getElementById("btn-onnx-load-canvas");
 
-            window.customConfirm("Are you sure you want to clear the editor canvas and load the ONNX model layers?", () => {
-                performLoadONNX(data);
-            }, null, "Confirm Load");
-        });
+    const handleLoadCanvas = () => {
+        const data = window.LastParsedONNX;
+        if (!data || !window.AppGraph) return window.customAlert("No model data loaded.", "warning", "Warning");
+
+        window.customConfirm("Are you sure you want to clear the editor canvas and load the model layers?", () => {
+            performLoadONNX(data);
+        }, null, "Confirm Load");
+    };
+
+    if (btnLoadCanvasMenu) {
+        btnLoadCanvasMenu.addEventListener("click", handleLoadCanvas);
+    }
+    if (btnLoadCanvasModal) {
+        btnLoadCanvasModal.addEventListener("click", handleLoadCanvas);
     }
 
     // Export Model to ONNX

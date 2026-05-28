@@ -1,10 +1,11 @@
 import torch
 import time
 
-def profile_model(model, input_shape):
+def profile_model(model, input_shape, num_iterations=100):
     """
     Runs a dummy tensor through the model layer-by-layer.
     Measures execution time, extracts output shapes, and pinpoints errors to specific nodes.
+    Supports a configurable num_iterations to average execution latency.
     """
     if not isinstance(input_shape, list) or len(input_shape) == 0:
         input_shape = [1, 3, 224, 224]
@@ -35,12 +36,18 @@ def profile_model(model, input_shape):
         elif isinstance(x, (list, tuple)) and len(x) > 0 and isinstance(x[0], torch.Tensor):
             in_shape_val = list(x[0].shape)
 
-        # We know it won't fail here since the warmup succeeded
+        # Warm up the layer execution
+        with torch.no_grad():
+            _ = layer(x)
+
+        # Profile num_iterations times
         t0 = time.perf_counter()
         with torch.no_grad():
-            out = layer(x)
+            for _ in range(num_iterations):
+                out = layer(x)
         t1 = time.perf_counter()
-        duration_ms = (t1 - t0) * 1000
+        
+        duration_ms = ((t1 - t0) * 1000) / num_iterations
         
         # Extract output shape
         shape_val = None

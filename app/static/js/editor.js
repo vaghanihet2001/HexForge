@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
     canvas.resize(container.clientWidth, container.clientHeight);
 
     // ── NODE REGISTRY (type → meta) ──────────────────────────
-    const NODE_META = {
+    const NODE_META = window.NODE_META = {
         "pytorch/input":             { label:"Input",            color:"#1a6b42", fields:["shape"] },
         "pytorch/conv1d":            { label:"Conv1d",           color:"#1565c0", fields:["in_channels","out_channels","kernel_size","stride","padding"] },
         "pytorch/conv2d":            { label:"Conv2d",           color:"#1565c0", fields:["in_channels","out_channels","kernel_size","stride","padding"] },
@@ -300,8 +300,14 @@ document.addEventListener("DOMContentLoaded", () => {
     window.UpdateNodePanelShapes = updateNodePanelShapes;
     window.GetActiveNode = () => activeNode;
 
+    let lastActiveViewBtn = null;
+
     function openPanel(node) {
+        if (window.CloseProfilingPanel) {
+            window.CloseProfilingPanel();
+        }
         activeNode = node;
+        lastActiveViewBtn = null;
         const meta = NODE_META[node.type] || { label: node.type, fields:[] };
 
         nppTitle.textContent = meta.label;
@@ -410,45 +416,51 @@ document.addEventListener("DOMContentLoaded", () => {
                 extraKeys.forEach(k => {
                     const wrap = document.createElement('div');
                     wrap.className = 'npp-field';
+                    wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin-bottom:12px;align-items:stretch;';
 
                     const lbl = document.createElement('label');
                     lbl.textContent = k;
+                    lbl.style.fontWeight = 'bold';
                     wrap.appendChild(lbl);
 
-                    const input = document.createElement('input');
-                    input.type = 'text';
                     const val = node.properties[k];
-                    input.value = typeof val === 'object' ? JSON.stringify(val) : val;
-
-                    input.addEventListener('change', () => {
-                        try {
-                            if (input.value.startsWith('[') || input.value.startsWith('{')) {
-                                node.properties[k] = JSON.parse(input.value);
-                            } else {
-                                const num = Number(input.value);
-                                node.properties[k] = !isNaN(num) ? num : input.value;
+                    let summary = "";
+                    if (Array.isArray(val)) {
+                        const getArrayShape = (arr) => {
+                            const shape = [];
+                            let curr = arr;
+                            while (Array.isArray(curr)) {
+                                shape.push(curr.length);
+                                curr = curr[0];
                             }
-                        } catch(e) {
-                            node.properties[k] = input.value;
+                            return shape;
+                        };
+                        const shape = getArrayShape(val);
+                        summary = `Tensor [${shape.join(', ')}]`;
+                    } else if (typeof val === 'object') {
+                        summary = `Object`;
+                    } else {
+                        summary = String(val);
+                        if (summary.length > 30) {
+                            summary = summary.substring(0, 27) + "...";
                         }
-                        
-                        // Sync widget if it exists
-                        if (node.widgets) {
-                            node.widgets.forEach(w => {
-                                if (w.name === k) {
-                                    w.value = typeof node.properties[k] === 'object' ? JSON.stringify(node.properties[k]) : node.properties[k];
-                                }
-                            });
-                        }
-                        if (LiteGraph.LGraphCanvas.active_canvas) {
-                            LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
-                        }
-                        if (window.TriggerShapeInference) {
-                            window.TriggerShapeInference();
-                        }
-                    });
+                    }
 
-                    wrap.appendChild(input);
+                    const summaryEl = document.createElement('div');
+                    summaryEl.style.cssText = 'font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:2px;';
+                    summaryEl.textContent = summary;
+                    wrap.appendChild(summaryEl);
+
+                    const viewBtn = document.createElement('button');
+                    viewBtn.className = 'btn btn-sm btn-secondary';
+                    viewBtn.style.cssText = 'align-self:flex-start;padding:3px 8px;font-size:11px;margin:0;';
+                    viewBtn.setAttribute('data-const-name', k);
+                    viewBtn.innerHTML = '<i class="fa-solid fa-eye"></i> View Full Values';
+                    viewBtn.addEventListener('click', () => {
+                        window.ShowConstantInSidePanel(k, val, viewBtn);
+                    });
+                    wrap.appendChild(viewBtn);
+
                     constSection.appendChild(wrap);
                 });
                 nppBody.appendChild(constSection);
@@ -464,8 +476,69 @@ document.addEventListener("DOMContentLoaded", () => {
         panel.classList.add('hidden');
         shell.classList.remove('panel-open');
         activeNode = null;
+        lastActiveViewBtn = null;
         canvas.resize(container.clientWidth, container.clientHeight);
     }
+    window.CloseNodePanel = closePanel;
+
+    window.ShowConstantInSidePanel = function(cName, val, clickedBtn) {
+        if (panel.classList.contains('hidden') && activeNode) {
+            openPanel(activeNode);
+        }
+        
+        // Hide/restore view buttons
+        if (lastActiveViewBtn) {
+            lastActiveViewBtn.style.display = 'inline-block';
+        }
+        if (clickedBtn) {
+            clickedBtn.style.display = 'none';
+            lastActiveViewBtn = clickedBtn;
+        } else {
+            const match = nppBody.querySelector(`button[data-const-name="${cName}"]`);
+            if (match) {
+                match.style.display = 'none';
+                lastActiveViewBtn = match;
+            } else {
+                lastActiveViewBtn = null;
+            }
+        }
+
+        let viewer = document.getElementById('npp-constant-viewer');
+        if (!viewer) {
+            viewer = document.createElement('div');
+            viewer.id = 'npp-constant-viewer';
+            viewer.className = 'npp-section';
+            viewer.style.cssText = 'border-top:1px solid var(--border);padding-top:12px;margin-top:12px;';
+            nppBody.appendChild(viewer);
+        }
+        
+        let formatted = "";
+        try {
+            formatted = typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val);
+        } catch(e) {
+            formatted = String(val);
+        }
+        
+        viewer.innerHTML = `
+            <p class="npp-section-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <span>Constant: <strong>${cName}</strong></span>
+                <button id="npp-copy-constant" class="btn btn-sm btn-secondary" style="padding:2px 6px;font-size:10px;margin:0;"><i class="fa-solid fa-copy"></i> Copy</button>
+            </p>
+            <textarea readonly style="width:100%;height:150px;font-family:var(--font-mono);font-size:10px;background:rgba(0,0,0,0.25);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;resize:vertical;outline:none;white-space:pre;white-space:pre-wrap;word-break:break-all;overflow:auto;">${formatted}</textarea>
+        `;
+        
+        const copyBtn = document.getElementById('npp-copy-constant');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', () => {
+                navigator.clipboard.writeText(formatted).then(() => {
+                    copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+                    setTimeout(() => { copyBtn.innerHTML = '<i class="fa-solid fa-copy"></i> Copy'; }, 2000);
+                });
+            });
+        }
+        
+        nppBody.scrollTop = nppBody.scrollHeight;
+    };
 
     nppClose.addEventListener('click', closePanel);
 
@@ -824,34 +897,114 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // ── INITIAL GRAPH LOAD ────────────────────────────────────
     let lastSavedData = "";
-    const savedData = localStorage.getItem("hexforge-autosave");
+    const urlParams = new URLSearchParams(window.location.search);
+    const activeVersionId = urlParams.get('version_id');
     let loaded = false;
-    if (savedData) {
-        try {
-            graph.configure(JSON.parse(savedData));
-            if (graph._nodes) {
-                graph._nodes.forEach(n => {
-                    n.title = getBaseTitle(n);
-                    n.originalTitle = n.title;
-                    refreshStatusWidgets(n);
-                });
-            }
-            syncAllNodeWidgets(graph);
-            lastSavedData = savedData;
-            loaded = true;
-        } catch (e) {
-            console.error("Failed to parse saved graph from localStorage:", e);
-        }
+
+    if (activeVersionId) {
+        // Fetch from MongoDB
+        fetch(`/api/versions/${activeVersionId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success' && data.version) {
+                    const v = data.version;
+                    
+                    // Display badge
+                    const badge = document.getElementById("project-version-badge");
+                    const badgeProj = document.getElementById("badge-proj-name");
+                    const badgeVer = document.getElementById("badge-ver-name");
+                    if (badge && badgeProj && badgeVer) {
+                        badgeProj.textContent = "Loading project...";
+                        badgeVer.textContent = v.version_name;
+                        badge.style.display = "inline-flex";
+                        
+                         // Fetch project details to show project name
+                        fetch(`/api/projects/${v.project_id}`)
+                            .then(pr => pr.json())
+                            .then(pdata => {
+                                if (pdata.status === 'success') {
+                                    badgeProj.textContent = pdata.project.name;
+                                    if (pdata.project.dataset) {
+                                        window.hasProjectDataset = true;
+                                        window.projectDataset = pdata.project.dataset;
+                                        const fnSpan = document.getElementById('upload-filename');
+                                        if (fnSpan) {
+                                            fnSpan.textContent = `Using Project Dataset: ${pdata.project.dataset.filename}`;
+                                            fnSpan.style.display = 'block';
+                                            fnSpan.style.color = 'var(--green)';
+                                        }
+                                    }
+                                }
+                            });
+                    }
+
+                    // Load Graph
+                    graph.clear();
+                    if (v.graph && Object.keys(v.graph).length > 0) {
+                        graph.configure(v.graph);
+                    } else {
+                        // Start with default input node
+                        var n_in  = LiteGraph.createNode("pytorch/input"); n_in.pos=[100,200]; graph.add(n_in);
+                    }
+                    
+                    if (graph._nodes) {
+                        graph._nodes.forEach(n => {
+                            n.title = getBaseTitle(n);
+                            n.originalTitle = n.title;
+                            refreshStatusWidgets(n);
+                        });
+                    }
+                    syncAllNodeWidgets(graph);
+                    lastSavedData = JSON.stringify(graph.serialize());
+                    
+                    if (window.TriggerShapeInference) {
+                        window.TriggerShapeInference();
+                    }
+                    if (LiteGraph.LGraphCanvas.active_canvas) {
+                        LiteGraph.LGraphCanvas.active_canvas.setDirty(true, true);
+                    }
+                } else {
+                    console.error("Failed to load version graph from server:", data.message);
+                    loadLocalAutosave();
+                }
+            })
+            .catch(err => {
+                console.error("Error fetching version graph:", err);
+                loadLocalAutosave();
+            });
+    } else {
+        loadLocalAutosave();
     }
-    
-    if (!loaded) {
-        // ── DEMO GRAPH fallback ───────────────────────────────
-        var n_in  = LiteGraph.createNode("pytorch/input");    n_in.pos=[60,200];  graph.add(n_in);
-        var n_c2  = LiteGraph.createNode("pytorch/conv2d");   n_c2.pos=[310,200]; graph.add(n_c2);
-        var n_bn  = LiteGraph.createNode("pytorch/batchnorm2d"); n_bn.pos=[570,200]; graph.add(n_bn);
-        var n_rl  = LiteGraph.createNode("pytorch/relu");     n_rl.pos=[810,200]; graph.add(n_rl);
-        n_in.connect(0,n_c2,0); n_c2.connect(0,n_bn,0); n_bn.connect(0,n_rl,0);
-        lastSavedData = JSON.stringify(graph.serialize());
+
+    function loadLocalAutosave() {
+        const savedData = localStorage.getItem("hexforge-autosave");
+        if (savedData) {
+            try {
+                graph.configure(JSON.parse(savedData));
+                if (graph._nodes) {
+                    graph._nodes.forEach(n => {
+                        n.title = getBaseTitle(n);
+                        n.originalTitle = n.title;
+                        refreshStatusWidgets(n);
+                    });
+                }
+                syncAllNodeWidgets(graph);
+                lastSavedData = savedData;
+                loaded = true;
+            } catch (e) {
+                console.error("Failed to parse saved graph from localStorage:", e);
+            }
+        }
+        
+        if (!loaded) {
+            // ── DEMO GRAPH fallback ───────────────────────────────
+            var n_in  = LiteGraph.createNode("pytorch/input");    n_in.pos=[60,200];  graph.add(n_in);
+            var n_c2  = LiteGraph.createNode("pytorch/conv2d");   n_c2.pos=[310,200]; graph.add(n_c2);
+            var n_bn  = LiteGraph.createNode("pytorch/batchnorm2d"); n_bn.pos=[570,200]; graph.add(n_bn);
+            var n_rl  = LiteGraph.createNode("pytorch/relu");     n_rl.pos=[810,200]; graph.add(n_rl);
+            n_in.connect(0,n_c2,0); n_c2.connect(0,n_bn,0); n_bn.connect(0,n_rl,0);
+            lastSavedData = JSON.stringify(graph.serialize());
+        }
     }
 
     graph.start();
@@ -869,11 +1022,46 @@ document.addEventListener("DOMContentLoaded", () => {
         const saveFunc = () => {
             const currentData = JSON.stringify(graph.serialize());
             if (currentData !== lastSavedData) {
-                localStorage.setItem("hexforge-autosave", currentData);
-                lastSavedData = currentData;
-            }
-            if (indicator) {
-                indicator.innerHTML = '<i class="fa-solid fa-circle-check" style="color:var(--green);font-size:10px;"></i> Autosaved';
+                if (activeVersionId) {
+                    // Save to server
+                    fetch(`/api/versions/${activeVersionId}/graph`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ graph: graph.serialize() })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            lastSavedData = currentData;
+                            if (indicator) {
+                                indicator.innerHTML = '<i class="fa-solid fa-cloud-arrow-up" style="color:var(--green);font-size:10px;"></i> Saved to DB';
+                            }
+                        } else {
+                            if (indicator) {
+                                indicator.innerHTML = '<i class="fa-solid fa-circle-exclamation" style="color:var(--red);font-size:10px;"></i> Save Error';
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        console.error("Autosave to DB failed:", err);
+                        if (indicator) {
+                            indicator.innerHTML = '<i class="fa-solid fa-circle-exclamation" style="color:var(--red);font-size:10px;"></i> Network Error';
+                        }
+                    });
+                } else {
+                    // Save to local storage
+                    localStorage.setItem("hexforge-autosave", currentData);
+                    lastSavedData = currentData;
+                    if (indicator) {
+                        indicator.innerHTML = '<i class="fa-solid fa-circle-check" style="color:var(--green);font-size:10px;"></i> Autosaved';
+                    }
+                }
+            } else {
+                if (indicator) {
+                    indicator.innerHTML = activeVersionId ? 
+                        '<i class="fa-solid fa-cloud-arrow-up" style="color:var(--green);font-size:10px;"></i> Saved to DB' : 
+                        '<i class="fa-solid fa-circle-check" style="color:var(--green);font-size:10px;"></i> Autosaved';
+                }
             }
         };
 
