@@ -807,8 +807,14 @@
             try {
                 const res = await fetch(`/api/projects/${projectId}`);
                 const data = await res.json();
+                
+                // Fetch datasets
+                const dsRes = await fetch(`/api/projects/${projectId}/datasets`);
+                const dsData = await dsRes.json();
+                const datasets = dsData.status === 'success' ? dsData.datasets : [];
+                
                 if (data.status === 'success') {
-                    renderProjectDetails(data.project, data.versions);
+                    renderProjectDetails(data.project, data.versions, datasets);
                 } else {
                     projectDetailsPane.innerHTML = `<div style="color:var(--red); text-align:center; padding: 40px;">${data.message}</div>`;
                 }
@@ -818,7 +824,7 @@
         }
 
         // Render project info & versions in details pane
-        function renderProjectDetails(project, versions) {
+        function renderProjectDetails(project, versions, datasets = []) {
             const date = new Date(project.created_at).toLocaleDateString(undefined, {
                 month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
             });
@@ -905,7 +911,7 @@
                                 <a href="/editor?version_id=${v._id}" class="btn btn-ghost btn-action-ver" title="Build/Modify Model Graph">
                                     <i class="fa-solid fa-pencil"></i> Build
                                 </a>
-                                <a href="/train?version_id=${v._id}" class="btn btn-ghost btn-action-ver" title="Train Model Model">
+                                <a href="/train?version_id=${v._id}" class="btn btn-ghost btn-action-ver" title="Train Model runs">
                                     <i class="fa-solid fa-dumbbell"></i> Train
                                 </a>
                                 <a href="/playground?version_id=${v._id}" class="btn btn-primary btn-action-ver ${testDisabled}" style="${status !== 'trained' ? 'opacity:0.4; pointer-events:none;' : ''}" title="Test Trained Model on Images">
@@ -920,86 +926,96 @@
                 });
             }
 
-            let datasetHtml = '';
-            if (project.dataset) {
-                const ds = project.dataset;
-                const uploadDate = new Date(ds.uploaded_at).toLocaleString();
-                
-                let distHtml = '';
-                if (ds.distribution && Object.keys(ds.distribution).length > 0) {
-                    distHtml = `
-                        <div class="class-distribution" style="margin-top: 24px;">
-                            <h4 style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">Class Distribution</h4>
-                            <div style="display: flex; flex-direction: column; gap: 12px;">
-                                ${Object.entries(ds.distribution).map(([className, count]) => {
-                                    const pct = ((count / ds.num_samples) * 100).toFixed(1);
-                                    return `
-                                        <div style="display: flex; flex-direction: column; gap: 4px;">
-                                            <div style="display: flex; justify-content: space-between; font-size: 11px;">
-                                                <span style="font-weight: 600; color: var(--text-primary);">${escapeHtml(className)}</span>
-                                                <span style="color: var(--text-muted);">${count} samples (${pct}%)</span>
-                                            </div>
-                                            <div style="width: 100%; height: 6px; background: var(--border-subtle); border-radius: 3px; overflow: hidden;">
-                                                <div style="width: ${pct}%; height: 100%; background: var(--accent); border-radius: 3px;"></div>
-                                            </div>
-                                        </div>
-                                    `;
-                                }).join('')}
-                            </div>
+            let datasetHtml = `
+                <div class="details-body" style="padding: 24px; max-width: 900px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 24px;">
+                    <!-- Dataset List Table -->
+                    <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 20px;">
+                        <h3 style="margin: 0 0 16px 0; font-size: 15px; font-weight: 600; color: var(--text-primary); display:flex; align-items:center; gap:8px;">
+                            <i class="fa-solid fa-database" style="color:var(--accent);"></i> Uploaded Dataset Versions
+                        </h3>
+            `;
+            
+            if (datasets.length === 0) {
+                datasetHtml += `
+                        <div style="text-align: center; color: var(--text-muted); padding: 32px 16px; border: 1px dashed var(--border-subtle); border-radius: var(--radius-sm); font-size: 13px;">
+                            No versioned datasets uploaded yet. Upload a dataset below to get started.
                         </div>
-                    `;
-                }
-                
-                datasetHtml = `
-                    <div class="details-body" style="padding: 24px; max-width: 700px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;">
-                        <div class="dataset-info-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 20px; display: flex; align-items: flex-start; gap: 16px;">
-                            <div style="background: var(--accent-glow); color: var(--accent); width: 48px; height: 48px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0;">
-                                <i class="fa-solid fa-file-zipper"></i>
-                            </div>
-                            <div style="flex: 1; min-width: 0;">
-                                <h3 style="margin: 0 0 6px 0; font-size: 16px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(ds.filename)}</h3>
-                                <p style="margin: 0; font-size: 11px; color: var(--text-muted);">Uploaded: ${uploadDate}</p>
-                                
-                                <div style="display: flex; gap: 24px; margin-top: 16px;">
-                                    <div>
-                                        <span style="display: block; font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Classes</span>
-                                        <span style="font-size: 18px; font-weight: 700; color: var(--accent);">${ds.num_classes}</span>
-                                    </div>
-                                    <div>
-                                        <span style="display: block; font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Total Images</span>
-                                        <span style="font-size: 18px; font-weight: 700; color: var(--accent);">${ds.num_samples}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <button class="btn btn-ghost" id="btn-delete-dataset" style="color: var(--red); padding: 8px 12px;" title="Delete Dataset">
-                                <i class="fa-solid fa-trash-can"></i> Delete
-                            </button>
-                        </div>
-                        
-                        ${distHtml}
-                    </div>
                 `;
             } else {
-                datasetHtml = `
-                    <div class="details-body" style="padding: 24px; display: flex; align-items: center; justify-content: center; flex: 1;">
-                        <div class="dataset-upload-zone" id="dataset-upload-zone" style="max-width:550px; width:100%; border:2px dashed var(--border-default); border-radius:var(--radius-md); padding:40px 20px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;">
-                            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 40px; color: var(--text-muted);"></i>
+                datasetHtml += `
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); font-weight: 600;">
+                                        <th style="padding: 10px 8px;">Version Name</th>
+                                        <th style="padding: 10px 8px;">Total Samples</th>
+                                        <th style="padding: 10px 8px;">Classes</th>
+                                        <th style="padding: 10px 8px;">Uploaded Date</th>
+                                        <th style="padding: 10px 8px; text-align: right;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${datasets.map(ds => {
+                                        console.log(ds);
+                                        const uploadDate = new Date(ds.created_at).toLocaleString();
+                                        return `
+                                            <tr style="border-bottom: 1px solid var(--border-subtle);">
+                                                <td style="padding: 12px 8px; font-weight: 600; color: var(--text-primary);">${escapeHtml(ds.dataset_name)}</td>
+                                                <td style="padding: 12px 8px; color: var(--accent); font-weight: 700;">${ds.samples}</td>
+                                                <td style="padding: 12px 8px; color: var(--text-secondary);">${ds.classes.length} classes <span style="font-size:11px; color:var(--text-muted);">(${ds.classes.slice(0, 3).join(', ')}${ds.classes.length > 3 ? '...' : ''})</span></td>
+                                                <td style="padding: 12px 8px; color: var(--text-muted); font-size: 12px;">${uploadDate}</td>
+                                                <td style="padding: 12px 8px; text-align: right;">
+                                                    <button class="btn btn-ghost btn-delete-dataset-ver" data-id="${ds._id}" style="color: var(--red); padding: 4px 8px;" title="Delete Dataset Version">
+                                                        <i class="fa-solid fa-trash-can"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                `;
+            }
+            
+            // Add Upload Form
+            datasetHtml += `
+                    </div>
+
+                    <!-- Upload Form Zone -->
+                    <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 24px; display:flex; flex-direction:column; gap:16px;">
+                        <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--text-primary);">
+                            <i class="fa-solid fa-cloud-arrow-up" style="color:var(--accent);"></i> Upload New Dataset Version
+                        </h3>
+                        
+                        <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+                            <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Dataset Version Name</label>
+                                <input type="text" id="dataset-version-name-input" placeholder="e.g. MNIST Train v2, CatDog_Augmented" style="width: 100%; height: 38px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 0 12px; background: var(--bg-canvas); color: var(--text-primary); outline: none;">
+                            </div>
+                            
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <input type="file" id="dataset-zip-file" accept=".zip" style="display: none;">
+                                <button class="btn btn-primary" id="btn-select-zip-file" style="height:38px;">
+                                    <i class="fa-solid fa-file-zipper"></i> Select ZIP & Upload
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="dataset-upload-zone" id="dataset-upload-zone" style="border:2px dashed var(--border-default); border-radius:var(--radius-sm); padding:30px 16px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; background: var(--bg-canvas); cursor: pointer;">
+                            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 32px; color: var(--text-muted);"></i>
                             <div style="text-align:center;">
-                                <h3 style="margin: 0 0 6px 0; font-size: 15px; font-weight: 600; color: var(--text-primary);">Upload Classification Dataset</h3>
-                                <p style="margin: 0; font-size: 11.5px; color: var(--text-muted); line-height:1.6; max-width:380px; margin: 0 auto;">
-                                    Upload a ZIP archive containing class subdirectories filled with images.
+                                <p style="margin: 0; font-size: 12px; color: var(--text-secondary);">Drag and drop your dataset ZIP file here</p>
+                                <p style="margin: 4px 0 0 0; font-size: 11px; color: var(--text-muted); line-height:1.5;">
+                                    ZIP archive must contain class subdirectories with image files.<br>
                                     e.g., <code>dataset.zip</code> &rarr; <code>cats/</code>, <code>dogs/</code>.
                                 </p>
                             </div>
-                            <input type="file" id="dataset-zip-file" accept=".zip" style="display: none;">
-                            <button class="btn btn-primary btn-sm" id="btn-select-zip-file">
-                                <i class="fa-solid fa-file-zipper"></i> Select ZIP File
-                            </button>
-                            <div id="dataset-upload-status" style="margin-top: 10px; font-size: 11.5px; color: var(--text-secondary); display: none;"></div>
                         </div>
+                        <div id="dataset-upload-status" style="font-size: 12px; color: var(--text-secondary); display: none; padding: 10px; background: var(--bg-canvas); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);"></div>
                     </div>
-                `;
-            }
+                </div>
+            `;
 
             projectDetailsPane.innerHTML = `
                 <div class="details-header">
@@ -1025,7 +1041,7 @@
                         <i class="fa-solid fa-folder-tree"></i> Model Versions
                     </button>
                     <button class="tab-btn" data-tab="dataset">
-                        <i class="fa-solid fa-database"></i> Project Dataset
+                        <i class="fa-solid fa-database"></i> Datasets
                     </button>
                 </div>
                 
@@ -1117,7 +1133,10 @@
             const datasetUploadZone = document.getElementById('dataset-upload-zone');
             
             if (btnSelectZipFile && datasetZipFile) {
-                btnSelectZipFile.addEventListener('click', () => datasetZipFile.click());
+                btnSelectZipFile.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    datasetZipFile.click();
+                });
                 datasetZipFile.addEventListener('change', () => {
                     if (datasetZipFile.files.length > 0) {
                         uploadProjectDataset(project._id, datasetZipFile.files[0]);
@@ -1126,6 +1145,9 @@
             }
             
             if (datasetUploadZone) {
+                datasetUploadZone.addEventListener('click', () => {
+                    datasetZipFile.click();
+                });
                 datasetUploadZone.addEventListener('dragover', (e) => {
                     e.preventDefault();
                     datasetUploadZone.classList.add('dragover');
@@ -1147,33 +1169,39 @@
                 });
             }
             
-            const btnDeleteDataset = document.getElementById('btn-delete-dataset');
-            if (btnDeleteDataset) {
-                btnDeleteDataset.addEventListener('click', () => {
+            // Delete Dataset Version Action
+            const deleteDatasetBtns = projectDetailsPane.querySelectorAll('.btn-delete-dataset-ver');
+            deleteDatasetBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const datasetId = btn.getAttribute('data-id');
                     window.customConfirm(
-                        'Are you sure you want to delete this project dataset? This will permanently delete the uploaded archive and all extracted images!',
+                        'Are you sure you want to delete this dataset version? Models trained on this version will not be able to locate these files!',
                         async () => {
                             try {
-                                const delRes = await fetch(`/api/projects/${project._id}/dataset`, { method: 'DELETE' });
+                                const delRes = await fetch(`/api/datasets/${datasetId}`, { method: 'DELETE' });
                                 const delData = await delRes.json();
                                 if (delData.status === 'success') {
-                                    window.customAlert('Dataset deleted successfully.', 'success', 'Deleted');
+                                    window.customAlert('Dataset version deleted successfully.', 'success', 'Deleted');
                                     loadProjectDetails(project._id);
                                 } else {
                                     window.customAlert(delData.message, 'error', 'Error');
                                 }
                             } catch (err) {
-                                window.customAlert('Failed to delete dataset: ' + err.message, 'error', 'Error');
+                                window.customAlert('Failed to delete dataset version: ' + err.message, 'error', 'Error');
                             }
                         }
                     );
                 });
-            }
+            });
         }
 
         // Helper to upload classification dataset ZIP
         async function uploadProjectDataset(projectId, file) {
             const statusDiv = document.getElementById('dataset-upload-status');
+            const nameInput = document.getElementById('dataset-version-name-input');
+            const datasetName = nameInput ? nameInput.value.trim() : '';
+            
             if (statusDiv) {
                 statusDiv.style.display = 'block';
                 statusDiv.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Uploading and validating dataset ZIP...`;
@@ -1181,15 +1209,18 @@
             
             const formData = new FormData();
             formData.append('dataset', file);
+            if (datasetName) {
+                formData.append('dataset_name', datasetName);
+            }
             
             try {
-                const response = await fetch(`/api/projects/${projectId}/dataset`, {
+                const response = await fetch(`/api/projects/${projectId}/datasets`, {
                     method: 'POST',
                     body: formData
                 });
                 const data = await response.json();
                 if (data.status === 'success') {
-                    window.customAlert('Dataset uploaded and processed successfully!', 'success', 'Success');
+                    window.customAlert('Dataset version uploaded and processed successfully!', 'success', 'Success');
                     loadProjectDetails(projectId);
                 } else {
                     window.customAlert(data.message, 'error', 'Upload Failed');

@@ -158,6 +158,12 @@ def delete_version(version_id):
     db = get_db()
     if db is None:
         return False
+    
+    # Delete associated training runs cascadingly
+    runs = get_runs(version_id)
+    for r in runs:
+        delete_run(r["_id"])
+        
     v = get_version(version_id)
     if v and v.get("model_path"):
         import os
@@ -198,3 +204,200 @@ def delete_project_dataset(project_id):
         {"$unset": {"dataset": ""}}
     )
     return True
+
+# ─── DATASET VERSIONING HELPERS ────────────────────────────────────────────────
+
+def create_dataset(project_id, dataset_name, zip_path, extract_path, classes, samples):
+    db = get_db()
+    if db is None:
+        raise RuntimeError("Database connection not available")
+    dataset = {
+        "project_id": ObjectId(project_id),
+        "dataset_name": dataset_name,
+        "zip_path": zip_path,
+        "extract_path": extract_path,
+        "classes": classes,
+        "samples": samples,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    result = db.datasets.insert_one(dataset)
+    return str(result.inserted_id)
+
+def get_datasets(project_id):
+    db = get_db()
+    if db is None:
+        return []
+    try:
+        datasets = list(db.datasets.find({"project_id": ObjectId(project_id)}).sort("created_at", -1))
+        for d in datasets:
+            d["_id"] = str(d["_id"])
+            d["project_id"] = str(d["project_id"])
+        return datasets
+    except Exception:
+        return []
+
+def get_dataset(dataset_id):
+    db = get_db()
+    if db is None:
+        return None
+    try:
+        d = db.datasets.find_one({"_id": ObjectId(dataset_id)})
+        if d:
+            d["_id"] = str(d["_id"])
+            d["project_id"] = str(d["project_id"])
+        return d
+    except Exception:
+        return None
+
+def delete_dataset(dataset_id):
+    db = get_db()
+    if db is None:
+        return False
+    d = get_dataset(dataset_id)
+    if d:
+        import os, shutil
+        # delete zip file
+        try:
+            if d.get("zip_path") and os.path.exists(d["zip_path"]):
+                os.remove(d["zip_path"])
+        except Exception as e:
+            print(f"Error removing dataset zip file: {e}")
+        # delete extracted folder
+        try:
+            if d.get("extract_path") and os.path.exists(d["extract_path"]):
+                shutil.rmtree(d["extract_path"])
+        except Exception as e:
+            print(f"Error removing dataset extracted folder: {e}")
+        db.datasets.delete_one({"_id": ObjectId(dataset_id)})
+        return True
+    return False
+
+# ─── TRAINING RUNS HELPERS ─────────────────────────────────────────────────────
+
+def create_run(version_id, project_id, run_name, dataset_id, hyperparameters, pretrained_run_id=None):
+    db = get_db()
+    if db is None:
+        raise RuntimeError("Database connection not available")
+    run = {
+        "version_id": ObjectId(version_id),
+        "project_id": ObjectId(project_id),
+        "run_name": run_name,
+        "dataset_id": ObjectId(dataset_id) if dataset_id else None,
+        "pretrained_run_id": ObjectId(pretrained_run_id) if pretrained_run_id else None,
+        "status": "untrained",
+        "hyperparameters": hyperparameters,
+        "model_path": None,
+        "onnx_path": None,
+        "classes": [],
+        "metrics": {},
+        "train_logs": [],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    result = db.train_runs.insert_one(run)
+    return str(result.inserted_id)
+
+def get_runs(version_id):
+    db = get_db()
+    if db is None:
+        return []
+    try:
+        runs = list(db.train_runs.find({"version_id": ObjectId(version_id)}).sort("created_at", -1))
+        for r in runs:
+            r["_id"] = str(r["_id"])
+            r["version_id"] = str(r["version_id"])
+            r["project_id"] = str(r["project_id"])
+            if r.get("dataset_id"):
+                r["dataset_id"] = str(r["dataset_id"])
+            if r.get("pretrained_run_id"):
+                r["pretrained_run_id"] = str(r["pretrained_run_id"])
+        return runs
+    except Exception:
+        return []
+
+def get_project_runs(project_id):
+    db = get_db()
+    if db is None:
+        return []
+    try:
+        runs = list(db.train_runs.find({"project_id": ObjectId(project_id)}).sort("created_at", -1))
+        for r in runs:
+            r["_id"] = str(r["_id"])
+            r["version_id"] = str(r["version_id"])
+            r["project_id"] = str(r["project_id"])
+            if r.get("dataset_id"):
+                r["dataset_id"] = str(r["dataset_id"])
+            if r.get("pretrained_run_id"):
+                r["pretrained_run_id"] = str(r["pretrained_run_id"])
+        return runs
+    except Exception:
+        return []
+
+def get_run(run_id):
+    db = get_db()
+    if db is None:
+        return None
+    try:
+        r = db.train_runs.find_one({"_id": ObjectId(run_id)})
+        if r:
+            r["_id"] = str(r["_id"])
+            r["version_id"] = str(r["version_id"])
+            r["project_id"] = str(r["project_id"])
+            if r.get("dataset_id"):
+                r["dataset_id"] = str(r["dataset_id"])
+            if r.get("pretrained_run_id"):
+                r["pretrained_run_id"] = str(r["pretrained_run_id"])
+        return r
+    except Exception:
+        return None
+
+def update_run_status(run_id, status, metrics=None, model_path=None, onnx_path=None, classes=None, train_logs=None):
+    db = get_db()
+    if db is None:
+        return False
+    update_data = {
+        "status": status,
+        "updated_at": datetime.utcnow()
+    }
+    if metrics is not None:
+        update_data["metrics"] = metrics
+    if model_path is not None:
+        update_data["model_path"] = model_path
+    if onnx_path is not None:
+        update_data["onnx_path"] = onnx_path
+    if classes is not None:
+        update_data["classes"] = classes
+    if train_logs is not None:
+        update_data["train_logs"] = train_logs
+
+    db.train_runs.update_one(
+        {"_id": ObjectId(run_id)},
+        {"$set": update_data}
+    )
+    return True
+
+def delete_run(run_id):
+    db = get_db()
+    if db is None:
+        return False
+    r = get_run(run_id)
+    if r:
+        import os
+        # Delete weights
+        if r.get("model_path"):
+            try:
+                if os.path.exists(r["model_path"]):
+                    os.remove(r["model_path"])
+            except Exception as e:
+                print(f"Error removing run weights file: {e}")
+        # Delete ONNX
+        if r.get("onnx_path"):
+            try:
+                if os.path.exists(r["onnx_path"]):
+                    os.remove(r["onnx_path"])
+            except Exception as e:
+                print(f"Error removing run ONNX file: {e}")
+        db.train_runs.delete_one({"_id": ObjectId(run_id)})
+        return True
+    return False

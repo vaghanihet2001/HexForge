@@ -21,3 +21,7 @@ def projects():
 @main_bp.route('/playground')
 def playground():
     return render_template('playground.html', title="Playground")
+
+@main_bp.route('/run/<run_id>')
+def run_details(run_id):
+    return render_template('run_details.html', run_id=run_id, title="Training Run Details")

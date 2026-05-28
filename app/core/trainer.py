@@ -23,6 +23,7 @@ from torchvision import datasets, transforms
 _state_lock = threading.Lock()
 _training_state = {
     "status": "idle",          # idle | running | stopped | done | error
+    "run_id": None,
     "epoch": 0,
     "total_epochs": 0,
     "batch": 0,
@@ -75,9 +76,10 @@ def _log(msg: str, tag: str = "INFO"):
             _training_state["logs"] = _training_state["logs"][-2000:]
 
 
-def _reset_state(total_epochs: int, device_name: str, classes: list):
+def _reset_state(total_epochs: int, device_name: str, classes: list, run_id: str = None):
     with _state_lock:
         _training_state["status"]       = "running"
+        _training_state["run_id"]       = run_id
         _training_state["epoch"]        = 0
         _training_state["total_epochs"] = total_epochs
         _training_state["batch"]        = 0
@@ -222,7 +224,7 @@ def _train_thread(graph_data, zip_path, extract_path, cfg, model_save_path):
     """Runs inside a daemon thread."""
     try:
         from app.core.builder import build_model
-
+        import os
         # ── Device ──────────────────────────────────────────────────────────
         use_cuda   = torch.cuda.is_available()
         device     = torch.device("cuda" if use_cuda else "cpu")
@@ -232,6 +234,40 @@ def _train_thread(graph_data, zip_path, extract_path, cfg, model_save_path):
         _log("Building model from graph…", "INFO")
         model, input_shape, _ = build_model(graph_data)
         model = model.to(device)
+
+        # ── Pretrained weights ──────────────────────────────────────────────
+        pretrained_run_id = cfg.get("pretrained_run_id")
+        if pretrained_run_id:
+            from app.core.db_helpers import get_run
+            pre_run = get_run(pretrained_run_id)
+            if pre_run and pre_run.get("model_path"):
+                weight_path = pre_run["model_path"]
+                import os
+                if os.path.exists(weight_path):
+                    _log(f"Loading pretrained weights from run {pre_run.get('run_name', pretrained_run_id)}…", "INFO")
+                    try:
+                        pretrained_dict = torch.load(weight_path, map_location=device)
+                        model_dict = model.state_dict()
+                        filtered_dict = {}
+                        ignored_keys = []
+                        for k, v in pretrained_dict.items():
+                            if k in model_dict:
+                                if model_dict[k].shape == v.shape:
+                                    filtered_dict[k] = v
+                                else:
+                                    ignored_keys.append(f"{k} (shape mismatch: {v.shape} vs {model_dict[k].shape})")
+                            else:
+                                ignored_keys.append(f"{k} (missing in current model)")
+                        
+                        model_dict.update(filtered_dict)
+                        model.load_state_dict(model_dict)
+                        _log("Pretrained weights loaded successfully.", "INFO")
+                        if ignored_keys:
+                            _log(f"Ignored keys for transfer learning compatibilty: {', '.join(ignored_keys[:5])}" + (f" and {len(ignored_keys)-5} more" if len(ignored_keys) > 5 else ""), "INFO")
+                    except Exception as load_err:
+                        _log(f"WARNING: Could not load pretrained weights: {load_err}", "WARNING")
+                else:
+                    _log(f"WARNING: Pretrained weight file not found at {weight_path}", "WARNING")
 
         # ── Dataset ──────────────────────────────────────────────────────────
         _log("Extracting dataset…", "INFO")
@@ -251,15 +287,19 @@ def _train_thread(graph_data, zip_path, extract_path, cfg, model_save_path):
         num_classes = len(full_dataset.classes)
         classes     = full_dataset.classes
 
-        # Update DB if version_id is provided
+        # Update DB run or version status
+        run_id = cfg.get("run_id")
         version_id = cfg.get("version_id")
-        if version_id:
+        if run_id:
+            from app.core.db_helpers import update_run_status
+            update_run_status(run_id, status="training", classes=classes)
+        elif version_id:
             from app.core.db_helpers import update_version_status
             update_version_status(version_id, status="training", classes=classes)
 
         # ── Reset state with class info ──────────────────────────────────────
         epochs = int(cfg.get("epochs", 10))
-        _reset_state(epochs, dev_name, classes)
+        _reset_state(epochs, dev_name, classes, run_id=run_id)
 
         # Post info logs AFTER reset so they aren't wiped
         _log(f"Device      : {dev_name}", "INFO")
@@ -625,20 +665,33 @@ def _train_thread(graph_data, zip_path, extract_path, cfg, model_save_path):
             else:
                 _training_state["status"] = "done"
 
-        # Update DB if version_id is provided
+        # Get latest accuracy
+        accuracy = 0.0
+        if _training_state["history"]["val_acc"]:
+            accuracy = _training_state["history"]["val_acc"][-1]
+        metrics = {
+            "val_loss": _training_state["best_val_loss"],
+            "accuracy": round(accuracy * 100, 2), # convert to percentage
+            "history": _training_state["history"]
+        }
+
+        # Update DB run or version
+        run_id = cfg.get("run_id")
         version_id = cfg.get("version_id")
-        if version_id:
+        db_status = "stopped" if _stop_event.is_set() else "trained"
+        
+        if run_id:
+            from app.core.db_helpers import update_run_status
+            update_run_status(
+                run_id, 
+                status=db_status, 
+                metrics=metrics, 
+                model_path=model_save_path,
+                classes=classes,
+                train_logs=_training_state["logs"]
+            )
+        elif version_id:
             from app.core.db_helpers import update_version_status
-            db_status = "stopped" if _stop_event.is_set() else "trained"
-            # Get latest accuracy
-            accuracy = 0.0
-            if _training_state["history"]["val_acc"]:
-                accuracy = _training_state["history"]["val_acc"][-1]
-            metrics = {
-                "val_loss": _training_state["best_val_loss"],
-                "accuracy": round(accuracy * 100, 2), # convert to percentage
-                "history": _training_state["history"]
-            }
             update_version_status(
                 version_id, 
                 status=db_status, 
@@ -655,9 +708,18 @@ def _train_thread(graph_data, zip_path, extract_path, cfg, model_save_path):
             _training_state["status"] = "error"
             _training_state["error"]  = str(e)
         
-        # Update DB if version_id is provided
+        # Update DB run or version
+        run_id = cfg.get("run_id")
         version_id = cfg.get("version_id")
-        if version_id:
+        if run_id:
+            from app.core.db_helpers import update_run_status
+            update_run_status(
+                run_id, 
+                status="failed", 
+                metrics={"error": str(e)},
+                train_logs=_training_state["logs"]
+            )
+        elif version_id:
             from app.core.db_helpers import update_version_status
             update_version_status(version_id, status="failed", metrics={"error": str(e)})
     finally:

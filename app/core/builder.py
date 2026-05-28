@@ -13,11 +13,11 @@ def build_model(graph_data):
     if not graph_data:
         raise ValueError("Empty graph data")
 
-    if isinstance(graph_data, str):
+    while isinstance(graph_data, str):
         try:
             graph_data = json.loads(graph_data)
         except Exception:
-            pass
+            break
 
     if isinstance(graph_data, dict):
         nodes = graph_data.get("nodes", [])

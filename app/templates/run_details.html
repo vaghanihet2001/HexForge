@@ -1,0 +1,1059 @@
+{% extends "base.html" %}
+{% block title %}Run Details — HEXForge{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+    .run-details-container {
+        padding: 30px;
+        width:100%;
+        /* max-width: 1200px; */
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        color: var(--text-primary);
+        overflow-y:auto;
+    }
+    
+    .run-details-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        border-bottom: 1px solid var(--border-subtle);
+        padding-bottom: 20px;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+    
+    .runs-container{
+        display:flex;
+        flex-direction: column;
+        gap: 24px;
+    }
+    .breadcrumbs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+    }
+    
+    .breadcrumbs a {
+        color: var(--text-muted);
+        text-decoration: none;
+        transition: var(--transition);
+    }
+    
+    .breadcrumbs a:hover {
+        color: var(--accent);
+    }
+    
+    .run-title-area h1 {
+        font-size: 24px;
+        font-weight: 700;
+        margin: 0 0 6px 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .run-meta-strip {
+        display: flex;
+        gap: 20px;
+        font-size: 12px;
+        color: var(--text-secondary);
+        flex-wrap: wrap;
+    }
+    
+    .run-meta-strip span strong {
+        color: var(--text-primary);
+    }
+
+    .badge-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .badge-status.idle { background: rgba(148, 163, 184, 0.12); color: #94a3b8; }
+    .badge-status.training { background: rgba(51, 204, 255, 0.12); color: var(--accent); }
+    .badge-status.trained { background: rgba(52, 211, 153, 0.12); color: #34d399; }
+    .badge-status.failed { background: rgba(248, 113, 113, 0.12); color: #f87171; }
+    .badge-status.stopped { background: rgba(251, 191, 36, 0.12); color: #fbbf24; }
+
+    .pulse {
+        animation: pulse-anim 1.5s infinite;
+    }
+    @keyframes pulse-anim {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+
+    .control-actions-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    .control-buttons {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1px;
+        background: var(--border-subtle);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+    }
+
+    .info-pill {
+        background: var(--bg-surface);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .info-pill .ip-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--text-muted);
+        font-weight: 600;
+    }
+
+    .info-pill .ip-val {
+        font-size: 20px;
+        font-weight: 700;
+        font-family: var(--font-mono);
+    }
+
+    .info-pill .ip-sub {
+        font-size: 11px;
+        color: var(--text-secondary);
+    }
+
+    /* tqdm Progress Bar */
+    .progress-bar-container {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .pb-track {
+        height: 8px;
+        background: var(--bg-canvas);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .pb-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+        width: 0%;
+        transition: width 0.4s ease;
+    }
+    .pb-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        font-family: var(--font-mono);
+        color: var(--text-secondary);
+    }
+
+    /* Charts Layout: Full scrollable page as requested */
+    .charts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+        gap: 20px;
+    }
+
+    @media (max-width: 768px) {
+        .charts-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .chart-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        height: 380px;
+    }
+
+    .chart-card-hdr {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .chart-card canvas {
+        flex: 1;
+        min-height: 0;
+    }
+
+    /* Terminal Console */
+    .terminal-panel {
+        background: #0a0e1a;
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        height: 300px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+    }
+
+    .terminal-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 16px;
+        background: #0d1120;
+        border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+
+    .terminal-bar span {
+        font-size: 11px;
+        font-weight: 700;
+        color: #7dd3fc;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .terminal-dots {
+        display: flex;
+        gap: 6px;
+    }
+    .td-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+
+    .terminal-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        line-height: 1.6;
+    }
+    
+    .terminal-progress-line {
+        padding: 8px 16px;
+        background: #080c16;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: #34d399;
+        border-top: 1px solid rgba(255,255,255,0.05);
+        white-space: pre;
+    }
+
+    .tl-epoch { color: #a78bfa; }
+    .tl-info { color: #94a3b8; }
+    .tl-success { color: #34d399; }
+    .tl-warn { color: #fbbf24; }
+    .tl-error { color: #f87171; }
+
+    /* Validation Images */
+    .val-samples-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: 20px;
+    }
+
+    .val-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 16px;
+        margin-top: 16px;
+    }
+
+    .val-item {
+        background: var(--bg-canvas);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        transition: var(--transition);
+    }
+    .val-item:hover {
+        transform: translateY(-2px);
+    }
+
+    .val-item img {
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: contain;
+        background: var(--bg-base);
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-default);
+    }
+
+    .val-meta {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 11.5px;
+    }
+
+    .val-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .val-label {
+        color: var(--text-muted);
+    }
+    .val-value {
+        font-weight: 700;
+    }
+
+    /* Evaluation Panel */
+    .eval-section {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: 24px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="run-details-container">
+    <div class="runs-container">
+    <!-- Header -->
+    <div class="run-details-header">
+        <div class="run-title-area">
+            <div class="breadcrumbs">
+                <a href="/projects"><i class="fa-solid fa-folder-open"></i> Projects</a>
+                <span>/</span>
+                <span id="proj-breadcrumb">Loading project...</span>
+                <span>/</span>
+                <span id="ver-breadcrumb">Loading version...</span>
+                <span>/</span>
+                <span id="runs-breadcrumb">Loading runs...</span>
+            </div>
+            <h1>
+                <i class="fa-solid fa-square-poll-vertical" style="color:var(--accent);"></i>
+                <span id="run-name-title">Training Run details</span>
+                <span class="badge-status idle" id="run-status-badge">Idle</span>
+            </h1>
+            <div class="run-meta-strip">
+                <span>Start Time: <strong id="run-started-at">—</strong></span>
+                <span>Dataset: <strong id="run-dataset-name">—</strong></span>
+                <span>Device: <strong id="run-device">—</strong></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions Control Panel -->
+    <div class="control-actions-card">
+        <div>
+            <h4 style="margin:0 0 4px 0; font-size:14px; font-weight:600;">Run Management & Export</h4>
+            <p style="margin:0; font-size:12px; color:var(--text-muted);">Stop, export, or download weights and model checkpoints.</p>
+        </div>
+        <div class="control-buttons">
+            <button class="btn btn-danger" id="btn-stop-train" disabled>
+                <i class="fa-solid fa-stop"></i> Stop Training
+            </button>
+            <button class="btn btn-ghost" id="btn-download-pt" disabled>
+                <i class="fa-solid fa-download"></i> Download PyTorch (.pt)
+            </button>
+            <button class="btn btn-ghost" id="btn-export-onnx" disabled>
+                <i class="fa-solid fa-file-export"></i> Export ONNX
+            </button>
+            <button class="btn btn-primary" id="btn-download-onnx" style="display: none;">
+                <i class="fa-solid fa-download"></i> Download ONNX
+            </button>
+        </div>
+    </div>
+
+    <!-- Info/Metric Cards Grid -->
+    <div class="info-grid">
+        <div class="info-pill">
+            <span class="ip-label">Epoch Status</span>
+            <span class="ip-val" id="pill-epoch">—</span>
+            <span class="ip-sub" id="pill-eta">ETA: —</span>
+        </div>
+        <div class="info-pill">
+            <span class="ip-label">Best Val Accuracy</span>
+            <span class="ip-val" style="color:var(--accent);" id="pill-best-acc">—</span>
+            <span class="ip-sub">Validation Target</span>
+        </div>
+        <div class="info-pill">
+            <span class="ip-label">Best Val Loss</span>
+            <span class="ip-val" id="pill-best-loss">—</span>
+            <span class="ip-sub">Loss Optimization</span>
+        </div>
+        <div class="info-pill">
+            <span class="ip-label">Elapsed Time</span>
+            <span class="ip-val" id="pill-elapsed">—</span>
+            <span class="ip-sub">Total Duration</span>
+        </div>
+    </div>
+
+    <!-- tqdm Progress Bar -->
+    <div class="progress-bar-container" id="progress-bar-card" style="display: none;">
+        <div class="pb-track"><div class="pb-fill" id="progress-fill"></div></div>
+        <div class="pb-meta">
+            <span id="progress-label-text">0 / 0 Epochs Completed</span>
+            <span id="progress-percentage">0%</span>
+        </div>
+    </div>
+
+    <!-- Charts Area -->
+    <div class="charts-grid">
+        <div class="chart-card">
+            <div class="chart-card-hdr"><i class="fa-solid fa-chart-line" style="color:var(--accent);"></i> Training &amp; Validation Loss</div>
+            <canvas id="chart-loss"></canvas>
+        </div>
+        <div class="chart-card">
+            <div class="chart-card-hdr"><i class="fa-solid fa-bullseye" style="color:#34d399;"></i> Train &amp; Val Accuracy</div>
+            <canvas id="chart-acc"></canvas>
+        </div>
+        <div class="chart-card">
+            <div class="chart-card-hdr"><i class="fa-solid fa-crosshairs" style="color:#a78bfa;"></i> Precision &amp; Recall</div>
+            <canvas id="chart-pr"></canvas>
+        </div>
+        <div class="chart-card">
+            <div class="chart-card-hdr"><i class="fa-solid fa-trophy" style="color:#fbbf24;"></i> F1 Score &amp; Learning Rate</div>
+            <canvas id="chart-f1"></canvas>
+        </div>
+        <div class="chart-card" style="grid-column: 1 / -1; height: 320px;">
+            <div class="chart-card-hdr"><i class="fa-solid fa-microchip" style="color:#fb7185;"></i> System Resource Usage</div>
+            <canvas id="chart-resources"></canvas>
+        </div>
+    </div>
+
+    <!-- Live Validation Samples -->
+    <div class="val-samples-card" id="val-samples-card" style="display: none;">
+        <div class="chart-card-hdr">
+            <i class="fa-solid fa-images" style="color:var(--accent);"></i> Live Validation Image Previews (Completed Epoch Inference)
+        </div>
+        <div class="val-grid" id="val-grid-container">
+            <!-- Rendered dynamically -->
+        </div>
+    </div>
+
+    <!-- Terminal panel -->
+    <div class="terminal-panel">
+        <div class="terminal-bar">
+            <span><i class="fa-solid fa-terminal"></i> Live Training Console Output</span>
+            <div class="terminal-dots">
+                <div class="td-dot" style="background:#f87171;"></div>
+                <div class="td-dot" style="background:#fbbf24;"></div>
+                <div class="td-dot" style="background:#34d399;"></div>
+            </div>
+        </div>
+        <div class="terminal-body" id="terminal-body-el">
+            <span class="tl-info">Connecting to training log stream...</span><br>
+        </div>
+        <div class="terminal-progress-line" id="terminal-progress-bar-el" style="display: none;"></div>
+    </div>
+
+    <!-- Model Evaluator Panel -->
+    <div class="eval-section" id="eval-section-panel" style="display: none;">
+        <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: var(--text-primary); display:flex; align-items:center; gap:8px;">
+            <i class="fa-solid fa-flask" style="color:var(--accent);"></i> Trained Model Evaluation
+        </h3>
+        <p style="margin: 0 0 16px 0; font-size: 13px; color: var(--text-muted);">
+            Run detailed testing of this trained checkpoint. You can either evaluate on the original validation dataset or upload a new classification dataset zip archive.
+        </p>
+
+        <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 250px; display: flex; flex-direction: column; gap: 6px;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Select Evaluation Dataset</label>
+                <select id="eval-dataset-source" style="height: 38px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 0 12px; background: var(--bg-canvas); color: var(--text-primary); outline: none;">
+                    <option value="training">Original Training Run Dataset</option>
+                    <option value="upload">Upload Custom Test ZIP (.zip)</option>
+                </select>
+            </div>
+            
+            <div id="eval-file-upload-wrap" style="display: none; align-items: center; gap: 8px;">
+                <input type="file" id="eval-zip-file" accept=".zip" style="display: none;">
+                <button class="btn btn-ghost" id="btn-select-eval-zip" style="height:38px;">
+                    <i class="fa-solid fa-file-zipper"></i> Choose Test ZIP
+                </button>
+                <span id="eval-zip-filename" style="font-size:12px; color:var(--accent); font-family:var(--font-mono);"></span>
+            </div>
+
+            <button class="btn btn-primary" id="btn-run-evaluation" style="height: 38px;">
+                <i class="fa-solid fa-vial"></i> Run Evaluation
+            </button>
+        </div>
+
+        <!-- Evaluation Results Display -->
+        <div id="eval-results-wrap" style="display: none; margin-top: 24px; border-top: 1px solid var(--border-subtle); padding-top: 20px; display:flex; flex-direction:column; gap:20px;">
+            <h4 style="margin:0; font-size: 14px; font-weight: 600; color: var(--text-primary);">Evaluation Results</h4>
+            
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                <div style="background:var(--bg-canvas); padding:16px; border:1px solid var(--border-subtle); border-radius:var(--radius-md);">
+                    <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); font-weight:600; margin-bottom:4px;">Accuracy</div>
+                    <div style="font-size:24px; font-weight:700; color:#34d399;" id="eval-res-acc">—</div>
+                </div>
+                <div style="background:var(--bg-canvas); padding:16px; border:1px solid var(--border-subtle); border-radius:var(--radius-md);">
+                    <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); font-weight:600; margin-bottom:4px;">Loss</div>
+                    <div style="font-size:24px; font-weight:700;" id="eval-res-loss">—</div>
+                </div>
+                <div style="background:var(--bg-canvas); padding:16px; border:1px solid var(--border-subtle); border-radius:var(--radius-md);">
+                    <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); font-weight:600; margin-bottom:4px;">Samples Evaluated</div>
+                    <div style="font-size:24px; font-weight:700; color:var(--accent);" id="eval-res-samples">—</div>
+                </div>
+            </div>
+
+            <!-- Precision/Recall/F1 Table -->
+            <div style="background:var(--bg-canvas); padding:16px; border:1px solid var(--border-subtle); border-radius:var(--radius-md);">
+                <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:12px;">Class Metrics</div>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;" id="eval-metrics-table">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--border-subtle); color:var(--text-muted);">
+                                <th style="padding:8px;">Class Name</th>
+                                <th style="padding:8px;">Precision</th>
+                                <th style="padding:8px;">Recall</th>
+                                <th style="padding:8px;">F1 Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="eval-metrics-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const runId = "{{ run_id }}";
+    
+    let loadedRun = null;
+    let logOffset = 0;
+    let pollTimer = null;
+    let sessionTimestamp = Date.now();
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function fmtTime(s) {
+        if (s === null || s === undefined || isNaN(s)) return '—';
+        if (s < 60) return `${Math.round(s)}s`;
+        const m = Math.floor(s/60), sec = Math.round(s%60);
+        return `${m}m ${sec}s`;
+    }
+
+    // Chart Options & Construction
+    const CHART_DEFAULTS = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 300 },
+        plugins: {
+            legend: {
+                labels: { color: '#94a3b8', font: { size: 10 }, boxWidth: 12 }
+            }
+        },
+        scales: {
+            x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.04)' } },
+            y: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.04)' } }
+        }
+    };
+
+    function mkChart(id, datasets, extraOptions = {}) {
+        const ctx = document.getElementById(id).getContext('2d');
+        const opts = JSON.parse(JSON.stringify(CHART_DEFAULTS));
+        if (extraOptions.scales) {
+            Object.assign(opts.scales, extraOptions.scales);
+        }
+        return new Chart(ctx, { type: 'line', data: { labels: [], datasets }, options: opts });
+    }
+
+    const cLoss = mkChart('chart-loss', [
+        { label: 'Train Loss', data: [], borderColor: '#33ccff', backgroundColor: 'rgba(51,204,255,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 },
+        { label: 'Val Loss',   data: [], borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 }
+    ]);
+    
+    // Fixed ranges (0 to 100) for percentage charts as requested
+    const cAcc = mkChart('chart-acc', [
+        { label: 'Train Acc', data: [], borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 },
+        { label: 'Val Acc',   data: [], borderColor: '#6ee7b7', backgroundColor: 'rgba(110,231,183,.06)', tension: 0.35, pointRadius: 2, borderWidth: 2, borderDash: [4,3] }
+    ], { scales: { y: { min: 0, max: 100 } } });
+
+    const cPR = mkChart('chart-pr', [
+        { label: 'Precision', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 },
+        { label: 'Recall',    data: [], borderColor: '#fb923c', backgroundColor: 'rgba(251,146,60,.08)',  tension: 0.35, pointRadius: 2, borderWidth: 2 }
+    ], { scales: { y: { min: 0, max: 100 } } });
+
+    const cF1 = mkChart('chart-f1', [
+        { label: 'F1 Score', data: [], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2, yAxisID: 'y' },
+        { label: 'Learning Rate', data: [], borderColor: '#94a3b8', backgroundColor: 'transparent', tension: 0.35, pointRadius: 2, borderWidth: 1.5, borderDash: [3,3], yAxisID: 'y1' }
+    ], { scales: { y: { min: 0, max: 100 } } });
+    cF1.options.scales.y1 = { type: 'linear', position: 'right', ticks: { color: '#64748b', font: { size: 9 } }, grid: { drawOnChartArea: false } };
+
+    const cResources = mkChart('chart-resources', [
+        { label: 'CPU Usage %', data: [], borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 },
+        { label: 'GPU Usage %', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 },
+        { label: 'RAM Usage %', data: [], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,.08)', tension: 0.35, pointRadius: 2, borderWidth: 2 }
+    ], { scales: { y: { min: 0, max: 100 } } });
+
+    // Update charts with training history data
+    function updateCharts(h) {
+        if (!h || !h.train_loss) return;
+        const epochs = h.train_loss.map((_, i) => `Ep ${i+1}`);
+        
+        [cLoss, cAcc, cPR, cF1, cResources].forEach(c => { c.data.labels = epochs; });
+
+        cLoss.data.datasets[0].data = h.train_loss;
+        cLoss.data.datasets[1].data = h.val_loss;
+        cAcc.data.datasets[0].data  = h.train_acc.map(v => +(v*100).toFixed(2));
+        cAcc.data.datasets[1].data  = h.val_acc.map(v   => +(v*100).toFixed(2));
+        cPR.data.datasets[0].data   = h.precision.map(v => +(v*100).toFixed(2));
+        cPR.data.datasets[1].data   = h.recall.map(v    => +(v*100).toFixed(2));
+        cF1.data.datasets[0].data   = h.f1.map(v        => +(v*100).toFixed(2));
+        cF1.data.datasets[1].data   = h.lr;
+
+        cResources.data.datasets[0].data = h.cpu_usage || [];
+        cResources.data.datasets[1].data = h.gpu_usage || [];
+        cResources.data.datasets[2].data = h.ram_usage || [];
+
+        [cLoss, cAcc, cPR, cF1, cResources].forEach(c => c.update('none'));
+    }
+
+    // Terminal log streaming
+    const terminal = document.getElementById('terminal-body-el');
+    const TAG_CLASS = { EPOCH:'tl-epoch', INFO:'tl-info', SUCCESS:'tl-success', WARN:'tl-warn', ERROR:'tl-error' };
+
+    function appendLogs(logs, autoScroll = true) {
+        if (!logs || !logs.length) return;
+        const frag = document.createDocumentFragment();
+        logs.forEach(l => {
+            const cls = TAG_CLASS[l.tag] || 'tl-info';
+            const span = document.createElement('span');
+            span.className = cls;
+            span.textContent = l.msg;
+            frag.appendChild(span);
+            frag.appendChild(document.createElement('br'));
+        });
+        terminal.appendChild(frag);
+        if (autoScroll) terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function updateTerminalProgress(barText) {
+        const progEl = document.getElementById('terminal-progress-bar-el');
+        if (barText) {
+            progEl.textContent = barText;
+            progEl.style.display = 'block';
+        } else {
+            progEl.style.display = 'none';
+        }
+    }
+
+    // Update validation image gallery
+    function updateValSamples(samples) {
+        const card = document.getElementById('val-samples-card');
+        const container = document.getElementById('val-grid-container');
+        if (!samples || !samples.length) {
+            card.style.display = 'none';
+            return;
+        }
+        card.style.display = 'block';
+        container.innerHTML = samples.map(s => {
+            const isCorrect = String(s.prediction) === String(s.label);
+            const predColor = isCorrect ? '#34d399' : '#f87171';
+            return `
+                <div class="val-item">
+                    <img src="${s.image_url}?t=${sessionTimestamp}" alt="Validation Sample">
+                    <div class="val-meta">
+                        <div class="val-row">
+                            <span class="val-label">Ground Truth:</span>
+                            <span class="val-value">${escapeHtml(s.label)}</span>
+                        </div>
+                        <div class="val-row">
+                            <span class="val-label">Prediction:</span>
+                            <span class="val-value" style="color: ${predColor};">${escapeHtml(s.prediction)}</span>
+                        </div>
+                        <div class="val-row">
+                            <span class="val-label">Confidence:</span>
+                            <span class="val-value" style="color: var(--accent);">${s.confidence}%</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Set page details
+    async function initPage() {
+        try {
+            const res = await fetch(`/api/runs/${runId}`);
+            const data = await res.json();
+            if (data.status !== 'success' || !data.run) {
+                window.customAlert('Failed to load training run details.', 'error', 'Error');
+                return;
+            }
+            loadedRun = data.run;
+            
+            // Set breadcrumbs & titles
+            document.getElementById('run-name-title').textContent = loadedRun.run_name;
+            document.getElementById('run-started-at').textContent = new Date(loadedRun.created_at).toLocaleString();
+            
+            // Breadcrumbs fetch project & version
+            const verRes = await fetch(`/api/versions/${loadedRun.version_id}`);
+            const verData = await verRes.json();
+            if (verData.status === 'success' && verData.version) {
+                document.getElementById('ver-breadcrumb').innerHTML = `<a href="/train?version_id=${verData.version._id}">${escapeHtml(verData.version.version_name)}</a>`;
+                
+                const projRes = await fetch(`/api/projects/${verData.version.project_id}`);
+                const projData = await projRes.json();
+                if (projData.status === 'success' && projData.project) {
+                    document.getElementById('proj-breadcrumb').innerHTML = `<a href="/projects?project_id=${projData.project._id}">${escapeHtml(projData.project.name)}</a>`;
+                }
+            }
+            document.getElementById('runs-breadcrumb').innerHTML = `<a href="/train?version_id=${loadedRun.version_id}">Runs</a>`;
+
+            // Dataset Name fetch
+            if (loadedRun.dataset_id) {
+                const dsRes = await fetch(`/api/datasets/${loadedRun.dataset_id}`);
+                const dsData = await dsRes.json();
+                console.log("check",dsData);
+                if (dsData.status === 'success' && dsData.dataset) {
+                    document.getElementById('run-dataset-name').textContent = dsData.dataset.dataset_name;
+                }
+            } else {
+                document.getElementById('run-dataset-name').textContent = 'Legacy Dataset';
+            }
+
+            // Populate static or poll state
+            updatePageUI(loadedRun);
+
+            if (loadedRun.status === 'training') {
+                startLivePolling();
+            } else {
+                // Populate historical metrics
+                if (loadedRun.metrics && loadedRun.metrics.history) {
+                    updateCharts(loadedRun.metrics.history);
+                }
+                // Populate historical logs
+                terminal.innerHTML = '';
+                appendLogs(loadedRun.train_logs || [], true);
+            }
+        } catch (err) {
+            window.customAlert('Initialization failed: ' + err.message, 'error', 'Error');
+        }
+    }
+
+    function updatePageUI(run) {
+        const badge = document.getElementById('run-status-badge');
+        const dbStatus = run.status || 'untrained';
+        let displayStatus = dbStatus;
+        if (dbStatus === 'done') displayStatus = 'trained';
+        
+        badge.className = `badge-status ${dbStatus === 'done' ? 'trained' : dbStatus}`;
+        if (dbStatus === 'training') {
+            badge.classList.add('pulse');
+        }
+        badge.textContent = displayStatus;
+        // Info pills
+        const ep = run.epoch !== undefined ? run.epoch : 0;
+        const tot = run.total_epochs || (run.hyperparameters ? run.hyperparameters.epochs : 10);
+        console.log("update info pills",ep,tot);
+        document.getElementById('pill-epoch').textContent = `${ep} / ${tot}`;
+        
+        const bvl = run.metrics && run.metrics.val_loss !== undefined ? run.metrics.val_loss : null;
+        document.getElementById('pill-best-loss').textContent = bvl ? bvl.toFixed(5) : '—';
+        
+        const acc = run.metrics && run.metrics.accuracy !== undefined ? `${run.metrics.accuracy}%` : '—';
+        document.getElementById('pill-best-acc').textContent = acc;
+
+        document.getElementById('pill-elapsed').textContent = run.elapsed ? fmtTime(run.elapsed) : '—';
+        document.getElementById('pill-eta').textContent = run.eta ? `ETA: ${fmtTime(run.eta)}` : 'ETA: —';
+        
+        // Progress Bar
+        const progressCard = document.getElementById('progress-bar-card');
+        const fill = document.getElementById('progress-fill');
+        const pct = tot ? Math.round((ep / tot) * 100) : 0;
+        
+        if (dbStatus === 'training') {
+            progressCard.style.display = 'block';
+            fill.style.width = `${pct}%`;
+            document.getElementById('progress-label-text').textContent = `${ep} / ${tot} Epochs Completed`;
+            document.getElementById('progress-percentage').textContent = `${pct}%`;
+        } else {
+            progressCard.style.display = 'none';
+        }
+
+        // Action controls
+        document.getElementById('btn-stop-train').disabled = dbStatus !== 'training';
+        
+        const hasPT = run.model_path !== undefined && run.model_path !== '';
+        document.getElementById('btn-download-pt').disabled = !hasPT || dbStatus === 'training';
+        document.getElementById('btn-export-onnx').disabled = !hasPT || dbStatus === 'training';
+        
+        // If ONNX is already exported, show the download button
+        if (run.onnx_path) {
+            document.getElementById('btn-export-onnx').style.display = 'none';
+            document.getElementById('btn-download-onnx').style.display = 'inline-flex';
+        } else {
+            document.getElementById('btn-export-onnx').style.display = 'inline-flex';
+            document.getElementById('btn-download-onnx').style.display = 'none';
+        }
+
+        // Enable evaluator section if trained
+        const evalSection = document.getElementById('eval-section-panel');
+        if (dbStatus === 'done' || dbStatus === 'trained') {
+            evalSection.style.display = 'block';
+        } else {
+            evalSection.style.display = 'none';
+        }
+    }
+
+    // Polling functions
+    function startLivePolling() {
+        if (pollTimer) clearInterval(pollTimer);
+        terminal.innerHTML = '';
+        pollTimer = setInterval(pollState, 1200);
+    }
+
+    function stopLivePolling() {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = null;
+    }
+
+    async function pollState() {
+        try {
+            const res = await fetch(`/api/train/status?since=${logOffset}`);
+            const data = await res.json();
+            // console.log("training status",data)
+            // Verify this poll is actually for the current run
+            if (data.run_id && data.run_id !== runId) {
+                // Not our run, training must have finished or a new one started. Let's pull final DB document.
+                stopLivePolling();
+                initPage();
+                return;
+            }
+
+            logOffset = data.log_offset || logOffset;
+            appendLogs(data.logs || []);
+            updateTerminalProgress(data.progress_bar);
+            updateValSamples(data.val_samples);
+
+            if (data.history) {
+                updateCharts(data.history);
+            }
+
+            // Sync main metadata fields
+            document.getElementById('run-status-badge').textContent = data.status === 'done' ? 'trained' : data.status;
+            document.getElementById('run-device').textContent = data.device || 'CPU';
+            
+            const ep = data.epoch || 0;
+            const tot = data.total_epochs || 10;
+            document.getElementById('pill-epoch').textContent = `${ep} / ${tot}`;
+            document.getElementById('pill-elapsed').textContent = fmtTime(data.elapsed);
+            document.getElementById('pill-eta').textContent = data.eta ? `ETA: ${fmtTime(data.eta)}` : 'ETA: —';
+            
+            const bvl = data.best_val_loss;
+            document.getElementById('pill-best-loss').textContent = (bvl && isFinite(bvl)) ? bvl.toFixed(5) : '—';
+            
+            let valAcc = '—';
+            if (data.history && data.history.val_acc && data.history.val_acc.length > 0) {
+                valAcc = `${(data.history.val_acc[data.history.val_acc.length - 1] * 100).toFixed(2)}%`;
+            }
+            document.getElementById('pill-best-acc').textContent = valAcc;
+
+            // Progress bar
+            const pct = tot ? Math.round((ep / tot) * 100) : 0;
+            document.getElementById('progress-fill').style.width = `${pct}%`;
+            document.getElementById('progress-label-text').textContent = `${ep} / ${tot} Epochs Completed`;
+            document.getElementById('progress-percentage').textContent = `${pct}%`;
+
+            const isDone = ['done', 'stopped', 'error'].includes(data.status);
+            if (isDone) {
+                stopLivePolling();
+                updateTerminalProgress(null);
+                initPage(); // Refresh UI to final state
+            }
+        } catch (err) {
+            console.error('Poll failed:', err);
+        }
+    }
+
+    // Stop Training Button
+    document.getElementById('btn-stop-train').addEventListener('click', async () => {
+        try {
+            const res = await fetch('/api/train/stop', { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'success') {
+                window.customAlert('Stop training signal sent successfully.', 'success', 'Stopping');
+                document.getElementById('btn-stop-train').disabled = true;
+            }
+        } catch (err) {
+            window.customAlert('Failed to stop training: ' + err.message, 'error', 'Error');
+        }
+    });
+
+    // Download PT Weights
+    document.getElementById('btn-download-pt').addEventListener('click', () => {
+        window.location.href = `/api/runs/${runId}/download/pt`;
+    });
+
+    // Export ONNX
+    const btnExport = document.getElementById('btn-export-onnx');
+    btnExport.addEventListener('click', async () => {
+        btnExport.disabled = true;
+        btnExport.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Exporting...`;
+        try {
+            const res = await fetch(`/api/runs/${runId}/export/onnx`, { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'success') {
+                window.customAlert('Model successfully exported to ONNX format. Starting download...', 'success', 'Export Complete');
+                
+                // Hide export, show download
+                btnExport.style.display = 'none';
+                const btnDownloadOnnx = document.getElementById('btn-download-onnx');
+                btnDownloadOnnx.style.display = 'inline-flex';
+                
+                // Trigger download
+                window.location.href = `/api/runs/${runId}/download/onnx`;
+            } else {
+                window.customAlert(data.message || 'Failed to export model.', 'error', 'Export Failed');
+                btnExport.disabled = false;
+                btnExport.innerHTML = `<i class="fa-solid fa-file-export"></i> Export ONNX`;
+            }
+        } catch (err) {
+            window.customAlert('Export exception: ' + err.message, 'error', 'Error');
+            btnExport.disabled = false;
+            btnExport.innerHTML = `<i class="fa-solid fa-file-export"></i> Export ONNX`;
+        }
+    });
+
+    // Download ONNX
+    document.getElementById('btn-download-onnx').addEventListener('click', () => {
+        window.location.href = `/api/runs/${runId}/download/onnx`;
+    });
+
+    // Evaluation Controls
+    const sourceSelect = document.getElementById('eval-dataset-source');
+    const uploadWrap = document.getElementById('eval-file-upload-wrap');
+    const zipInput = document.getElementById('eval-zip-file');
+    const selectZipBtn = document.getElementById('btn-select-eval-zip');
+    const zipNameEl = document.getElementById('eval-zip-filename');
+
+    sourceSelect.addEventListener('change', () => {
+        uploadWrap.style.display = sourceSelect.value === 'upload' ? 'flex' : 'none';
+    });
+
+    selectZipBtn.addEventListener('click', () => zipInput.click());
+    zipInput.addEventListener('change', () => {
+        if (zipInput.files.length > 0) {
+            zipNameEl.textContent = zipInput.files[0].name;
+        }
+    });
+
+    const runEvalBtn = document.getElementById('btn-run-evaluation');
+    runEvalBtn.addEventListener('click', async () => {
+        const source = sourceSelect.value;
+        const file = zipInput.files[0];
+        
+        if (source === 'upload' && !file) {
+            window.customAlert('Please select a custom test ZIP dataset to evaluate.', 'warning', 'No Dataset Selected');
+            return;
+        }
+
+        runEvalBtn.disabled = true;
+        runEvalBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Evaluating...`;
+
+        const fd = new FormData();
+        if (source === 'upload' && file) {
+            fd.append('dataset', file);
+        }
+
+        try {
+            const res = await fetch(`/api/runs/${runId}/evaluate`, {
+                method: 'POST',
+                body: fd
+            });
+            const data = await res.json();
+            
+            if (data.status === 'success') {
+                window.customAlert('Model evaluation completed successfully!', 'success', 'Complete');
+                
+                // Show results
+                document.getElementById('eval-results-wrap').style.display = 'flex';
+                document.getElementById('eval-res-acc').textContent = `${(data.results.accuracy * 100).toFixed(2)}%`;
+                document.getElementById('eval-res-loss').textContent = data.results.val_loss.toFixed(5);
+                document.getElementById('eval-res-samples').textContent = data.results.total_samples || '—';
+
+                // Populate Class Table
+                const tbody = document.getElementById('eval-metrics-tbody');
+                tbody.innerHTML = '';
+                
+                if (data.results.class_metrics) {
+                    Object.entries(data.results.class_metrics).forEach(([className, metrics]) => {
+                        const tr = document.createElement('tr');
+                        tr.style.borderBottom = '1px solid var(--border-subtle)';
+                        tr.innerHTML = `
+                            <td style="padding:10px 8px; font-weight:600;">${escapeHtml(className)}</td>
+                            <td style="padding:10px 8px; color:var(--text-secondary);">${(metrics.precision * 100).toFixed(2)}%</td>
+                            <td style="padding:10px 8px; color:var(--text-secondary);">${(metrics.recall * 100).toFixed(2)}%</td>
+                            <td style="padding:10px 8px; color:var(--accent); font-weight:700;">${(metrics.f1 * 100).toFixed(2)}%</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            } else {
+                window.customAlert(data.message || 'Evaluation failed.', 'error', 'Error');
+            }
+        } catch (err) {
+            window.customAlert('Evaluation failed: ' + err.message, 'error', 'Error');
+        } finally {
+            runEvalBtn.disabled = false;
+            runEvalBtn.innerHTML = `<i class="fa-solid fa-vial"></i> Run Evaluation`;
+        }
+    });
+
+    // Start Page Init
+    initPage();
+</script>
+{% endblock %}

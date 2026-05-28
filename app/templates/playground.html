@@ -388,9 +388,15 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="version-select">Trained Version</label>
+                    <label for="version-select">Model Version</label>
                     <select id="version-select" disabled>
                         <option value="">Choose Version...</option>
+                    </select>
+                </div>
+                <div class="form-group" id="run-select-group" style="display: none; grid-column: span 2;">
+                    <label for="run-select">Training Run Checkpoint</label>
+                    <select id="run-select" disabled style="width: 100%;">
+                        <option value="">Choose Run...</option>
                     </select>
                 </div>
             </div>
@@ -463,6 +469,7 @@
         let projects = [];
         let selectedProjectId = null;
         let selectedVersionId = null;
+        let selectedRunId = null;
         let selectedFile = null;
 
         // Parse search params for auto-select
@@ -472,6 +479,8 @@
         // DOM elements
         const projectSelect = document.getElementById('project-select');
         const versionSelect = document.getElementById('version-select');
+        const runSelectGroup = document.getElementById('run-select-group');
+        const runSelect = document.getElementById('run-select');
         
         const fileInput = document.getElementById('image-file');
         const dropzone = document.getElementById('dropzone');
@@ -496,8 +505,12 @@
             const val = e.target.value;
             selectedProjectId = val || null;
             selectedVersionId = null;
+            selectedRunId = null;
             versionSelect.innerHTML = '<option value="">Choose Version...</option>';
             versionSelect.disabled = true;
+            runSelect.innerHTML = '<option value="">Choose Run...</option>';
+            runSelect.disabled = true;
+            runSelectGroup.style.display = 'none';
             validateRunButton();
 
             if (selectedProjectId) {
@@ -506,9 +519,24 @@
         });
 
         // Version selection change
-        versionSelect.addEventListener('change', (e) => {
+        versionSelect.addEventListener('change', async (e) => {
             const val = e.target.value;
             selectedVersionId = val || null;
+            selectedRunId = null;
+            
+            runSelect.innerHTML = '<option value="">Choose Run...</option>';
+            runSelect.disabled = true;
+            runSelectGroup.style.display = 'none';
+            validateRunButton();
+
+            if (selectedVersionId) {
+                await loadTrainedRuns(selectedVersionId);
+            }
+        });
+
+        // Run selection change
+        runSelect.addEventListener('change', (e) => {
+            selectedRunId = e.target.value || null;
             validateRunButton();
         });
 
@@ -535,6 +563,9 @@
 
             const formData = new FormData();
             formData.append('version_id', selectedVersionId);
+            if (selectedRunId) {
+                formData.append('run_id', selectedRunId);
+            }
             formData.append('image', selectedFile);
 
             try {
@@ -605,22 +636,22 @@
             }
         }
 
-        // Load project versions and filter for trained ones
+        // Load project versions and list all of them
         async function loadVersions(projectId, targetVersionId = null) {
             try {
                 const res = await fetch(`/api/projects/${projectId}`);
                 const data = await res.json();
                 if (data.status === 'success') {
-                    const trainedVersions = data.versions.filter(v => v.status === 'trained');
+                    const allVersions = data.versions || [];
                     
                     versionSelect.innerHTML = '<option value="">Choose Version...</option>';
-                    if (trainedVersions.length === 0) {
-                        versionSelect.innerHTML = '<option value="">No trained versions available</option>';
+                    if (allVersions.length === 0) {
+                        versionSelect.innerHTML = '<option value="">No model versions available</option>';
                         versionSelect.disabled = true;
                         return;
                     }
 
-                    trainedVersions.forEach(v => {
+                    allVersions.forEach(v => {
                         const isSelected = v._id === targetVersionId ? 'selected' : '';
                         versionSelect.innerHTML += `<option value="${v._id}" ${isSelected}>${escapeHtml(v.version_name)}</option>`;
                     });
@@ -629,11 +660,52 @@
                     
                     if (targetVersionId) {
                         selectedVersionId = targetVersionId;
-                        validateRunButton();
+                        await loadTrainedRuns(targetVersionId);
                     }
                 }
             } catch (err) {
                 console.error("Failed to load versions list", err);
+            }
+        }
+
+        // Fetch trained runs for the selected version
+        async function loadTrainedRuns(versionId, targetRunId = null) {
+            try {
+                const res = await fetch(`/api/versions/${versionId}/runs`);
+                const data = await res.json();
+                
+                runSelect.innerHTML = '<option value="">Choose Run...</option>';
+                runSelectGroup.style.display = 'block';
+                
+                if (data.status === 'success') {
+                    // Filter runs by status = 'trained' or 'stopped' that have model_path
+                    const runs = (data.runs || []).filter(r => (r.status === 'trained' || r.status === 'done' || r.status === 'stopped') && r.model_path);
+                    
+                    if (runs.length === 0) {
+                        runSelect.innerHTML = '<option value="">No trained run checkpoints found</option>';
+                        runSelect.disabled = true;
+                        return;
+                    }
+                    
+                    runs.forEach(r => {
+                        const acc = r.metrics && r.metrics.accuracy ? ` (Acc: ${r.metrics.accuracy}%)` : '';
+                        const isSelected = r._id === targetRunId ? 'selected' : '';
+                        runSelect.innerHTML += `<option value="${r._id}" ${isSelected}>${escapeHtml(r.run_name)}${acc}</option>`;
+                    });
+                    
+                    runSelect.disabled = false;
+                    
+                    // Auto-select first run if not targetRunId
+                    if (!targetRunId && runs.length > 0) {
+                        runSelect.selectedIndex = 1;
+                        selectedRunId = runs[0]._id;
+                    } else if (targetRunId) {
+                        selectedRunId = targetRunId;
+                    }
+                    validateRunButton();
+                }
+            } catch (err) {
+                console.error("Failed to load trained runs", err);
             }
         }
 
@@ -688,7 +760,7 @@
 
         // Check if run button should be enabled
         function validateRunButton() {
-            if (selectedVersionId && selectedFile) {
+            if (selectedVersionId && selectedRunId && selectedFile) {
                 btnRun.removeAttribute('disabled');
             } else {
                 btnRun.setAttribute('disabled', 'true');
