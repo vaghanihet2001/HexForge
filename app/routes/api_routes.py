@@ -1125,10 +1125,11 @@ def download_run_pt(run_id):
 @api_bp.route('/runs/<run_id>/evaluate', methods=['POST'])
 def evaluate_run_route(run_id):
     import os, shutil, uuid, json, torch
-    from flask import current_app, secure_filename
+    from flask import current_app
+    from werkzeug.utils import secure_filename
     from app.core.builder import build_model
     from app.core.evaluator import extract_dataset, evaluate_model
-    
+    print("run evalute api called",run_id)
     try:
         run = dbh.get_run(run_id)
         if not run:

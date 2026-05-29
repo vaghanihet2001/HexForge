@@ -796,7 +796,10 @@
         }
         badge.textContent = displayStatus;
         // Info pills
-        const ep = run.epoch !== undefined ? run.epoch : 0;
+        let ep = run.epoch !== undefined ? run.epoch : 0;
+        if (ep === 0 && run.metrics && run.metrics.history && run.metrics.history.train_loss) {
+            ep = run.metrics.history.train_loss.length;
+        }
         const tot = run.total_epochs || (run.hyperparameters ? run.hyperparameters.epochs : 10);
         console.log("update info pills",ep,tot);
         document.getElementById('pill-epoch').textContent = `${ep} / ${tot}`;
@@ -1015,7 +1018,8 @@
                 body: fd
             });
             const data = await res.json();
-            
+            console.log("evalution status:",data);
+            console.log("evalution status:",data.results);
             if (data.status === 'success') {
                 window.customAlert('Model evaluation completed successfully!', 'success', 'Complete');
                 

@@ -828,7 +828,7 @@
             const date = new Date(project.created_at).toLocaleDateString(undefined, {
                 month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
             });
-
+            console.log(versions);
             let versionsHtml = '';
             if (versions.length === 0) {
                 versionsHtml = `

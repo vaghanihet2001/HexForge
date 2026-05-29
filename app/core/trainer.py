@@ -293,7 +293,7 @@ def _train_thread(graph_data, zip_path, extract_path, cfg, model_save_path):
         if run_id:
             from app.core.db_helpers import update_run_status
             update_run_status(run_id, status="training", classes=classes)
-        elif version_id:
+        if version_id:
             from app.core.db_helpers import update_version_status
             update_version_status(version_id, status="training", classes=classes)
 
@@ -690,7 +690,7 @@ def _train_thread(graph_data, zip_path, extract_path, cfg, model_save_path):
                 classes=classes,
                 train_logs=_training_state["logs"]
             )
-        elif version_id:
+        if version_id:
             from app.core.db_helpers import update_version_status
             update_version_status(
                 version_id, 
@@ -719,7 +719,7 @@ def _train_thread(graph_data, zip_path, extract_path, cfg, model_save_path):
                 metrics={"error": str(e)},
                 train_logs=_training_state["logs"]
             )
-        elif version_id:
+        if version_id:
             from app.core.db_helpers import update_version_status
             update_version_status(version_id, status="failed", metrics={"error": str(e)})
     finally:

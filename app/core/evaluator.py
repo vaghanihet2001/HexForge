@@ -85,8 +85,16 @@ def evaluate_model(model, input_shape, dataset_path):
 
     correct = 0
     total = 0
+    total_loss = 0.0
     
     start_time = time.time()
+
+    num_classes = len(dataset.classes)
+    class_tp = {i: 0 for i in range(num_classes)}
+    class_fp = {i: 0 for i in range(num_classes)}
+    class_fn = {i: 0 for i in range(num_classes)}
+
+    criterion = torch.nn.CrossEntropyLoss()
     
     with torch.no_grad():
         for inputs, labels in dataloader:
@@ -96,25 +104,57 @@ def evaluate_model(model, input_shape, dataset_path):
             # Predict
             outputs = model(inputs)
             
-            # Assuming standard classification output where dim 1 is logits
-            _, predicted = torch.max(outputs.data, 1)
+            if outputs.shape[1] == 1 and num_classes == 2:
+                loss = torch.nn.functional.binary_cross_entropy_with_logits(outputs.squeeze(), labels.float())
+                predicted = (torch.sigmoid(outputs.squeeze()) >= 0.5).long()
+            else:
+                loss = criterion(outputs, labels)
+                _, predicted = torch.max(outputs.data, 1)
             
+            total_loss += loss.item() * inputs.size(0)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+
+            for lbl, pred in zip(labels.view(-1), predicted.view(-1)):
+                lbl = lbl.item()
+                pred = pred.item()
+                if lbl == pred:
+                    class_tp[lbl] += 1
+                else:
+                    class_fn[lbl] += 1
+                    if pred < num_classes:
+                        class_fp[pred] += 1
             
     end_time = time.time()
     
     total_time_seconds = end_time - start_time
     fps = total / total_time_seconds if total_time_seconds > 0 else 0
-    accuracy = (correct / total) * 100 if total > 0 else 0
+    accuracy = correct / total if total > 0 else 0
+    val_loss = total_loss / total if total > 0 else 0
+
+    class_metrics = {}
+    for i, cname in enumerate(dataset.classes):
+        tp = class_tp[i]
+        fp = class_fp[i]
+        fn = class_fn[i]
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        
+        class_metrics[cname] = {
+            "precision": float(precision),
+            "recall": float(recall),
+            "f1": float(f1)
+        }
 
     return {
-        "accuracy": round(accuracy, 2),
-        "total_images": total,
+        "accuracy": float(accuracy),
+        "val_loss": float(val_loss),
+        "total_samples": total,
         "correct_predictions": correct,
         "total_time_seconds": round(total_time_seconds, 2),
         "fps": round(fps, 2),
-        "classes": dataset.classes
+        "class_metrics": class_metrics
     }
 
 def inspect_classification_dataset(zip_path, extract_to):
